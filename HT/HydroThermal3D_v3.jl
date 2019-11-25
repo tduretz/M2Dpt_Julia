@@ -9,7 +9,7 @@ using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=
 using Printf, Statistics
 using LinearAlgebra
 using Plots                # ATTENTION: plotting fails inside plotting library if using flag '--math-mode=fast'.
-pyplot()
+gr()
 
 ####################### Kernels Tib
 
@@ -87,6 +87,8 @@ end
 #######################
 ## Main code
 @views function HydroThermal3D()
+# Visualise
+Vizu = 0
 # Physics
 Ra          = 60;
 dT          = 1.0;
@@ -209,11 +211,11 @@ cublocks  = ( 2, 8, 32)
 # T_v   = zeros(nx_v, ny_v, nz_v);
 # T_inn = zeros(nx-2, ny-2, nz-2);
 
-evol=[]; it1=1; time=0; warmup=3;  #tic(); toc();            #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
+evol=[]; it1=1; time=0; warmup=3;              #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
 ## Action
 for it = it1:nt
 
-    @printf("Thermal solver\n")
+    @printf("Thermal solver\n");
     # PT iteration parameters
     nitmax   = 1e4;
     nitout   = 1000;
@@ -240,7 +242,7 @@ for it = it1:nt
         end
     end
 
-    @printf("Darcy solver\n")
+    @printf("Darcy solver\n");
     # PT iteration parameters
     nitmax   = 1e4;
     nitout   = 1000;
@@ -272,15 +274,14 @@ for it = it1:nt
     time  = time + dt;
     @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
 
+if (Vizu == 1)
     X = Pc_ex[2:end-1,2:end-1,2:end-1]
     display( heatmap(xc, yc, transpose(X[:,:,Int(ceil(nz/2))]),c=:viridis,aspect_ratio=1) );
     # display(  contourf(xc,yc,transpose(Ty[:,:,Int(ceil(nz/2))])) ) # accede au sublot 111
     #quiver(x,y,(f,f))
     @printf("Imaged sliced at z index %d over nx = %d, ny = %d, nz = %d\n", Int(ceil(nz/2)), nx, ny, nz)
-    @printf("dx = %f, dy = %f, dz=%f\n", dx, dy, dz) 
     # display( heatmap(transpose(T_v[:,Int(ceil(ny_v/2)),:]),c=:viridis,aspect_ratio=1) );
-
-
+end
 
 #     # Postprocessing
 #     if mod(it,nout)==0
@@ -321,4 +322,4 @@ if (USE_MPI) finalize_global_grid(); end
 
 end # Diffusion3D()
 
-HydroThermal3D()
+@time HydroThermal3D()
