@@ -13,7 +13,7 @@ pyplot()
 
 ####################### Kernels Tib
 
-@views function ComputeFlux(kx::DatArray,ky::DatArray,kz::DatArray, A::DatArray, qx::DatArray, qy::DatArray, qz::DatArray,
+@views function ComputeFlux(kx::DatArray_k,ky::DatArray_k,kz::DatArray_k, A::DatArray_k, qx::DatArray_k, qy::DatArray_k, qz::DatArray_k,
     dx::DAT, dy::DAT, dz::DAT, nx::Integer, ny::Integer, nz::Integer)
     Dx = 1.0/dx;
     Dy = 1.0/dy;
@@ -31,7 +31,7 @@ pyplot()
     return nothing # Question 4, is that necessary?
 end
 
-@views function UpdateT(dt::DAT, dtau::DAT, T::DatArray, R::DatArray, F::DatArray, qx::DatArray, qy::DatArray, qz::DatArray,
+@views function UpdateT(dt::DAT, dtau::DAT, T::DatArray_k, R::DatArray_k, F::DatArray_k, qx::DatArray_k, qy::DatArray_k, qz::DatArray_k,
     dx::DAT, dy::DAT, dz::DAT, nx::Integer, ny::Integer, nz::Integer)
     Dx = 1.0/dx;
     Dy = 1.0/dy;
@@ -50,7 +50,7 @@ end
     return nothing
 end
 
-@views function UpdateP(dampx::DAT, dtau::DAT, P::DatArray, R::DatArray, F::DatArray, F0::DatArray, qx::DatArray, qy::DatArray, qz::DatArray,
+@views function UpdateP(dampx::DAT, dtau::DAT, P::DatArray_k, R::DatArray_k, F::DatArray_k, F0::DatArray_k, qx::DatArray_k, qy::DatArray_k, qz::DatArray_k,
     dx::DAT, dy::DAT, dz::DAT, nx::Integer, ny::Integer, nz::Integer)
 
     Dx = 1.0/dx;
@@ -71,7 +71,7 @@ end
 end
 
 
-@views function SetPressureBCs(Pc_ex::DatArray, Pbot::DAT, Ptop::DAT, nx::Integer, ny::Integer, nz::Integer)
+@views function SetPressureBCs(Pc_ex::DatArray_k, Pbot::DAT, Ptop::DAT, nx::Integer, ny::Integer, nz::Integer)
 
     @threadids_or_loop (nx+2,ny+2,nz+2) begin
         if (ix==1   ) Pc_ex[ix,iy,iz] =          Pc_ex[ix+1,iy,iz]; end
