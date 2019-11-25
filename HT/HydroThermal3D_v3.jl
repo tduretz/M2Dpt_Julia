@@ -1,10 +1,9 @@
 # Define working directory
-cd("/Users/tduretz/Dropbox/Julia/Thib/DiffusionLudoTest")
 const USE_GPU  = false     # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
 const USE_MPI  = false
 const DAT      = Float64   # Precision (Float64 or Float32)
 const disksave = false     # save results to disk in binary format
-include("Macros.jl")       # Include macros - Cachemisère
+include("./Macros.jl")       # Include macros - Cachemisère
 using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=12' (used for loops with @threads macro).
 using Printf, Statistics
 using LinearAlgebra
@@ -107,8 +106,8 @@ zmin     = -0.05; zmax    =         0.05; Lz = zmax - zmin;
 # Numerics
 nt       = 1#1000; #100; #SO: for testing; old: 10000;
 nout     = 100; #1;
-nx       = 2*32;
-ny       = 2*32;
+nx       = 10*32;
+ny       = 10*32;
 nz       = 3; #Int(ra*(nx-2)+2);  # Question 1: Cannot run with 1 or 3 (for making a 2D run) - 5 works                                                   #SO: conversion to Int required as ra is a float
 # Preprocessing
 if (USE_MPI) me, dims, nprocs, coords, comm = init_global_grid(nx, ny, nz; dimx=2, dimy=2, dimz=2);              #SO: later this can be calles as "me, = ..."
