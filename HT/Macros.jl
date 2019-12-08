@@ -59,7 +59,7 @@ end
 detrend(A)         = A .- mean_g(A)                                               #SO: A .- mean(A) is the simplest implementation according to the MATLAB function detrend, but it should rather remove the linear trend, as I remember, right? So, it should use the derivatives, I guess.
 ## LR: save funtion
 function SaveArray(Aname, A, isave)
-	fname = string(Aname, "_", isave, ".bin")
+	fname = string(Aname, "_", "$(@sprintf("%05d", isave))", ".bin")
 	out = open(fname,"w"); write(out,A); close(out)
 end
 
