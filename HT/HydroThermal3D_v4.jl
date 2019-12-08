@@ -1,5 +1,11 @@
 # Define working directory
-const USE_GPU  = false      # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
+if ARGS[1] == "GPU"
+    println("Using GPU")
+    const USE_GPU  = true      # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
+else
+    println("Using CPU")
+    const USE_GPU  = false
+end
 const USE_MPI  = false
 const DAT      = Float64   # Precision (Float64 or Float32)
 const disksave = false     # save results to disk in binary format
@@ -130,13 +136,13 @@ lam0     = 1.0;
 rad      = 1.0
 xmin     = -0.0;  xmax    =      1.86038; Lx = xmax - xmin;
 ymin     = -0.0;  ymax    = 1.0/4.0*xmax; Ly = ymax - ymin;
-zmin     = -0.05; zmax    =         0.05; Lz = zmax - zmin;
+zmin     = -0.05; zmax    =      1.86038; Lz = zmax - zmin;
 # Numerics
 nt       = 1#1000; #100; #SO: for testing; old: 10000;
 nout     = 100; #1;
-nx       = 2*32;
-ny       = 2*32;
-nz       = 3; #Int(ra*(nx-2)+2);  # Question 1: Cannot run with 1 or 3 (for making a 2D run) - 5 works                                                   #SO: conversion to Int required as ra is a float
+nx       = 4*32;
+ny       = 4*32;
+nz       = 4*32; #Int(ra*(nx-2)+2);  # Question 1: Cannot run with 1 or 3 (for making a 2D run) - 5 works                                                   #SO: conversion to Int required as ra is a float
 # Preprocessing
 if (USE_MPI) me, dims, nprocs, coords, comm = init_global_grid(nx, ny, nz; dimx=2, dimy=2, dimz=2);              #SO: later this can be calles as "me, = ..."
 else         me, dims, nprocs, coords       = (0, [1,1,1], 1, [0,0,0]);
@@ -215,10 +221,8 @@ Tc_ex = Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE CPU:
 @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2) < 0.01 ] += 0.1
 Tc_ex = DatArray(Tc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
 # Define kernel launch params (used only if USE_GPU set true).
-cuthreads = (32, 8, 4)
-# cublocks  = ceil.(Int, (nx+1, ny+1, nz+1)./cuthreads)
-cublocks  = ( 2, 8, 32)
-# cublocks  = ( 1, 4, 16)
+cuthreads = (32, 8, 2 )
+cublocks = ceil.(Int, (nx+2, ny+2, nz+2)./cuthreads)
 
 evol=[]; it1=1; time=0; warmup=3;              #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
 ## Action
@@ -250,9 +254,10 @@ for it = it1:nt
     Tc_ex   = DatArray(Tc_ex)
 
     for iter = 1:nitmax
-        @kernel cublocks cuthreads SetPressureBCs_x(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
-        @kernel cublocks cuthreads SetPressureBCs_y(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
-        @kernel cublocks cuthreads SetPressureBCs_z(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
+        # @kernel cublocks cuthreads SetPressureBCs_x(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
+        # @kernel cublocks cuthreads SetPressureBCs_y(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
+        # @kernel cublocks cuthreads SetPressureBCs_z(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
         @kernel cublocks cuthreads ComputeFlux(kx, ky, kz, Tc_ex, qx, qy, qz, dx, dy, dz, nx, ny, nz);    @devicesync();
         @kernel cublocks cuthreads UpdateT(dt, dtauT, Tc_ex, Rt, Ft, qx, qy, qz, dx, dy, dz, nx, ny, nz); @devicesync();
         if (USE_MPI) update_halo!(Tc_ex); end
@@ -266,16 +271,20 @@ for it = it1:nt
         end
     end
 
+    Rt      = Array(Rt)
+    Tc_ex   = Array(Tc_ex)
     @printf("min(Rt)    = %02.4e - max(Rt)    = %02.4e\n", minimum(Rt),    maximum(Rt)    )
     @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
+    Rt      = DatArray(Rt)
+    Tc_ex   = DatArray(Tc_ex)
 
     @printf("Darcy solver\n");
     # PT iteration parameters
     nitmax   = 1e4;
     nitout   = 1000;
     tolP     = 1e-10;
-    tetP     = 1/10;
-    dtauP    = tetP/4.1*min(dx,dy,dz)^2;
+    tetP     = 1/4;
+    dtauP    = tetP/6.1*min(dx,dy,dz)^2;
     Pdamp    = 1.25;
     dampx    = 1*(1-Pdamp/nx);
     Ft       = myzeros(nx  ,ny  ,nz  )
@@ -300,10 +309,10 @@ for it = it1:nt
     Ty      = DatArray(Ty)
     Tc_ex   = DatArray(Tc_ex)
     for iter = 1:nitmax
-        # @kernel cublocks cuthreads SetPressureBCs(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
-        @kernel cublocks cuthreads SetPressureBCs_x(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
-        @kernel cublocks cuthreads SetPressureBCs_y(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
-        @kernel cublocks cuthreads SetPressureBCs_z(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        # @kernel cublocks cuthreads SetPressureBCs_x(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        # @kernel cublocks cuthreads SetPressureBCs_y(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        # @kernel cublocks cuthreads SetPressureBCs_z(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
         @kernel cublocks cuthreads ComputeFlux(kx, ky, kz, Pc_ex, qx, qy, qz, dx, dy, dz, nx, ny, nz);            @devicesync();
         @kernel cublocks cuthreads UpdateP(dampx, dtauP, Pc_ex, Rp, Ft, Ft0, qx, qy, qz, dx, dy, dz, nx, ny, nz); @devicesync();
         if (USE_MPI) update_halo!(Pc_ex); end
@@ -316,8 +325,12 @@ for it = it1:nt
         end
     end
 
+    Rp      = Array(Rp)
+    Pc_ex   = Array(Pc_ex)
     @printf("min(Rp)    = %02.4e - max(Rp)    = %02.4e\n", minimum(Rp),    maximum(Rp)    )
     @printf("min(Pc_ex) = %02.4e - max(Pc_ex) = %02.4e\n", minimum(Pc_ex), maximum(Pc_ex) )
+    Rp      = DatArray(Rp)
+    Pc_ex   = DatArray(Pc_ex)
 
     time  = time + dt;
     @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
