@@ -1,5 +1,5 @@
 # Define working directory
-const USE_GPU  = false     # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
+const USE_GPU  = false      # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
 const USE_MPI  = false
 const DAT      = Float64   # Precision (Float64 or Float32)
 const disksave = false     # save results to disk in binary format
@@ -27,7 +27,7 @@ gr()
         if (@participate_a(qy))  @all(qy) = -@all(ky)*(Dy*@d_yi(A)); end
         if (@participate_a(qz))  @all(qz) = -@all(kz)*(Dz*@d_zi(A)); end
     end
-    return nothing # Question 4, is that necessary?
+    return nothing
 end
 
 @views function UpdateT(dt::DAT, dtau::DAT, T::DatArray_k, R::DatArray_k, F::DatArray_k, qx::DatArray_k, qy::DatArray_k, qz::DatArray_k,
@@ -69,19 +69,47 @@ end
     return nothing
 end
 
-
 @views function SetPressureBCs(Pc_ex::DatArray_k, Pbot::DAT, Ptop::DAT, nx::Integer, ny::Integer, nz::Integer)
 
     @threadids_or_loop (nx+2,ny+2,nz+2) begin
-        if (ix==1   ) Pc_ex[ix,iy,iz] =          Pc_ex[ix+1,iy,iz]; end
-        if (ix==nx+2) Pc_ex[ix,iy,iz] =          Pc_ex[ix-1,iy,iz]; end
-        if (iy==1   ) Pc_ex[ix,iy,iz] = 2*Pbot - Pc_ex[ix,iy+1,iz]; end
-        if (iy==ny+2) Pc_ex[ix,iy,iz] = 2*Ptop - Pc_ex[ix,iy-1,iz]; end
-        if (iz==1   ) Pc_ex[ix,iy,iz] =          Pc_ex[ix,iy,iz+1]; end
-        if (iz==nz+2) Pc_ex[ix,iy,iz] =          Pc_ex[ix,iy,iz-1]; end
+        if (@participate_a(Pc_ex) && ix==1              ) Pc_ex[1            ,iy,iz] =          Pc_ex[2              ,iy,iz]; end
+        if (@participate_a(Pc_ex) && ix==size(Pc_ex,1)  ) Pc_ex[size(Pc_ex,1),iy,iz] =          Pc_ex[size(Pc_ex,1)-1,iy,iz]; end
+        if (@participate_a(Pc_ex) && iy==1              ) Pc_ex[ix            ,1,iz] = 2*Pbot - Pc_ex[ix              ,2,iz]; end
+        if (@participate_a(Pc_ex) && iy==size(Pc_ex,2)  ) Pc_ex[ix,size(Pc_ex,2),iz] = 2*Ptop - Pc_ex[ix,size(Pc_ex,2)-1,iz]; end
+        if (@participate_a(Pc_ex) && iz==1              ) Pc_ex[ix,iy,            1] =          Pc_ex[ix,iy,              2]; end
+        if (@participate_a(Pc_ex) && iz==size(Pc_ex,3)  ) Pc_ex[ix,iy,size(Pc_ex,3)] =          Pc_ex[ix,iz,size(Pc_ex,3)-1]; end
     end
     return nothing
 end
+
+
+@views function SetPressureBCs_x(Pc_ex::DatArray_k, Pbot::DAT, Ptop::DAT, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+2,ny+2,nz+2) begin
+        if (@participate_a(Pc_ex) && ix==1              ) Pc_ex[1            ,iy,iz] =          Pc_ex[2              ,iy,iz]; end
+        if (@participate_a(Pc_ex) && ix==size(Pc_ex,1)  ) Pc_ex[size(Pc_ex,1),iy,iz] =          Pc_ex[size(Pc_ex,1)-1,iy,iz]; end
+    end
+    return nothing
+end
+
+@views function SetPressureBCs_y(Pc_ex::DatArray_k, Pbot::DAT, Ptop::DAT, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+2,ny+2,nz+2) begin
+        if (@participate_a(Pc_ex) && iy==1              ) Pc_ex[ix            ,1,iz] = 2*Pbot - Pc_ex[ix              ,2,iz]; end
+        if (@participate_a(Pc_ex) && iy==size(Pc_ex,2)  ) Pc_ex[ix,size(Pc_ex,2),iz] = 2*Ptop - Pc_ex[ix,size(Pc_ex,2)-1,iz]; end
+    end
+    return nothing
+end
+
+@views function SetPressureBCs_z(Pc_ex::DatArray_k, Pbot::DAT, Ptop::DAT, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+2,ny+2,nz+2) begin
+        if (@participate_a(Pc_ex) && iz==1              ) Pc_ex[ix,iy,            1] =          Pc_ex[ix,iy,              2]; end
+        if (@participate_a(Pc_ex) && iz==size(Pc_ex,3)  ) Pc_ex[ix,iy,size(Pc_ex,3)] =          Pc_ex[ix,iz,size(Pc_ex,3)-1]; end
+    end
+    return nothing
+end
+
 
 #######################
 ## Main code
@@ -178,37 +206,19 @@ kfv = DatArray(kfv);
 @printf("%d %d %d\n", size(Tc_ex)[1], size(Tc_ex)[2], size(Tc_ex)[3])
 @printf("%d %d %d\n", size(yc2)[1], size(yc2)[2], size(yc2)[3])
 @printf("%d %d \n", Nix, nx)
-
+Tc_ex = Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE CPU:
 @. Tc_ex[2:end-1,2:end-1,2:end-1] = -dT/Ly * yc2 + dT
 # Tc_ex[2:end-1,2:end-1,2:end-1]    = Tc_ex[2:end-1,2:end-1,2:end-1] + rand(nx,ny,nz)/10
 @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
 @. Tc_ex[:,1,:] = 2*Tbot - Tc_ex[:,2,:]; @. Tc_ex[:,end,:] = 2*Ttop - Tc_ex[:,end-1,:];
 @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
 @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2) < 0.01 ] += 0.1
-
+Tc_ex = DatArray(Tc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
 # Define kernel launch params (used only if USE_GPU set true).
 cuthreads = (32, 8, 4)
 # cublocks  = ceil.(Int, (nx+1, ny+1, nz+1)./cuthreads)
 cublocks  = ( 2, 8, 32)
 # cublocks  = ( 1, 4, 16)
-
-# # Preparation of visualisation
-# # ENV["GKSwstype"]="nul"
-# # anim    = Animation();
-# loadpath = "./Figures/"
-# anim = Animation(loadpath,String[]);
-# if me == 0
-#     println("Animation directory: $(anim.dir)");                # LR: print path to temp dir for animation
-#     # LR: to do: remove the temp folder after animation and erase it or move it to same folder as gif
-# end
-# isave   = 0;
-# red     = 1;                                                # Factor by wich size is reduced for visualization
-# nx_v    = (nx-2)÷red*dims[1];
-# ny_v    = (ny-2)÷red*dims[2];
-# nz_v    = (nz-2)÷red*dims[3];
-#
-# T_v   = zeros(nx_v, ny_v, nz_v);
-# T_inn = zeros(nx-2, ny-2, nz-2);
 
 evol=[]; it1=1; time=0; warmup=3;              #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
 ## Action
@@ -216,21 +226,33 @@ for it = it1:nt
 
     @printf("Thermal solver\n");
     # PT iteration parameters
-    nitmax   = 1e4;
-    nitout   = 1000;
-    tolT     = 1e-8;
+    nitmax  = 1e4;
+    nitout  = 1000;
+    tolT    = 1e-8;
     tetT    = 0.5;
     dtauT   = tetT*min(dx,dy,dz)^2/4.1;
     Ft      = myzeros(nx  ,ny  ,nz  )
+    Rt      = Array(Rt)
+    ktv     = Array(ktv)
+    kx      = Array(kx)
+    ky      = Array(ky)
+    kz      = Array(kz)
+    Tc_ex   = Array(Tc_ex)
     @. Rt   = - 1.0/dt * Tc_ex[2:end-1,2:end-1,2:end-1]              # Temperature RHS
     @. kx   = 0.25*(ktv[:,1:end-1,1:end-1] + ktv[:,1:end-1,2:end-0] + ktv[:,2:end-0,1:end-1] + ktv[:,2:end-0,2:end-0])
     @. ky   = 0.25*(ktv[1:end-1,:,1:end-1] + ktv[1:end-1,:,2:end-0] + ktv[2:end-0,:,1:end-1] + ktv[2:end-0,:,2:end-0])
     @. kz   = 0.25*(ktv[1:end-1,1:end-1,:] + ktv[1:end-1,2:end-0,:] + ktv[2:end-0,1:end-1,:] + ktv[2:end-0,2:end-0,:])
-
-    @printf("min(Rt) = %f - max(Rt) = %f\n", minimum(Rt), maximum(Rt) )
+    Rt      = DatArray(Rt)
+    ktv     = DatArray(ktv)
+    kx      = DatArray(kx)
+    ky      = DatArray(ky)
+    kz      = DatArray(kz)
+    Tc_ex   = DatArray(Tc_ex)
 
     for iter = 1:nitmax
-        @kernel cublocks cuthreads SetPressureBCs(Tc_ex, Tbot, Ttop, nx, ny, nz);                         @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs_x(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs_y(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs_z(Tc_ex, Tbot, Ttop, nx, ny, nz);                       @devicesync();
         @kernel cublocks cuthreads ComputeFlux(kx, ky, kz, Tc_ex, qx, qy, qz, dx, dy, dz, nx, ny, nz);    @devicesync();
         @kernel cublocks cuthreads UpdateT(dt, dtauT, Tc_ex, Rt, Ft, qx, qy, qz, dx, dy, dz, nx, ny, nz); @devicesync();
         if (USE_MPI) update_halo!(Tc_ex); end
@@ -244,7 +266,8 @@ for it = it1:nt
         end
     end
 
-    @printf("min(Tc_ex) = %f - max(Tc_ex) = %f\n", minimum(Tc_ex), maximum(Tc_ex) )
+    @printf("min(Rt)    = %02.4e - max(Rt)    = %02.4e\n", minimum(Rt),    maximum(Rt)    )
+    @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
 
     @printf("Darcy solver\n");
     # PT iteration parameters
@@ -257,13 +280,30 @@ for it = it1:nt
     dampx    = 1*(1-Pdamp/nx);
     Ft       = myzeros(nx  ,ny  ,nz  )
     Ft0      = myzeros(nx  ,ny  ,nz  )
+    Rp      = Array(Rp)
+    kfv     = Array(kfv)
+    kx      = Array(kx)
+    ky      = Array(ky)
+    kz      = Array(kz)
+    Ty      = Array(Ty)
+    Tc_ex   = Array(Tc_ex)
     ExCentroid2VyOnCPU!( Ty, Tc_ex )      # Interpolate T on Vy points
     @. Rp   = Ra/dy * (0.5*(kfv[1:end-1,2:end,1:end-1] + kfv[2:end,2:end,2:end])*Ty[:,2:end,:] - 0.5*(kfv[1:end-1,1:end-1,1:end-1] + kfv[2:end,1:end-1,2:end])*Ty[:,1:end-1,:])
     @. kx   = 0.25*(kfv[:,1:end-1,1:end-1] + kfv[:,1:end-1,2:end-0] + kfv[:,2:end-0,1:end-1] + kfv[:,2:end-0,2:end-0])
     @. ky   = 0.25*(kfv[1:end-1,:,1:end-1] + kfv[1:end-1,:,2:end-0] + kfv[2:end-0,:,1:end-1] + kfv[2:end-0,:,2:end-0])
-    @. kz   = 0.25*(ktv[1:end-1,1:end-1,:] + kfv[1:end-1,2:end-0,:] + kfv[2:end-0,1:end-1,:] + kfv[2:end-0,2:end-0,:])
+    @. kz   = 0.25*(kfv[1:end-1,1:end-1,:] + kfv[1:end-1,2:end-0,:] + kfv[2:end-0,1:end-1,:] + kfv[2:end-0,2:end-0,:])
+    Rp      = DatArray(Rp)
+    kfv     = DatArray(kfv)
+    kx      = DatArray(kx)
+    ky      = DatArray(ky)
+    kz      = DatArray(kz)
+    Ty      = DatArray(Ty)
+    Tc_ex   = DatArray(Tc_ex)
     for iter = 1:nitmax
-        @kernel cublocks cuthreads SetPressureBCs(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        # @kernel cublocks cuthreads SetPressureBCs(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs_x(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs_y(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
+        @kernel cublocks cuthreads SetPressureBCs_z(Pc_ex, Pbot, Ptop, nx, ny, nz);                                 @devicesync();
         @kernel cublocks cuthreads ComputeFlux(kx, ky, kz, Pc_ex, qx, qy, qz, dx, dy, dz, nx, ny, nz);            @devicesync();
         @kernel cublocks cuthreads UpdateP(dampx, dtauP, Pc_ex, Rp, Ft, Ft0, qx, qy, qz, dx, dy, dz, nx, ny, nz); @devicesync();
         if (USE_MPI) update_halo!(Pc_ex); end
@@ -275,6 +315,10 @@ for it = it1:nt
             end
         end
     end
+
+    @printf("min(Rp)    = %02.4e - max(Rp)    = %02.4e\n", minimum(Rp),    maximum(Rp)    )
+    @printf("min(Pc_ex) = %02.4e - max(Pc_ex) = %02.4e\n", minimum(Pc_ex), maximum(Pc_ex) )
+
     time  = time + dt;
     @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
 

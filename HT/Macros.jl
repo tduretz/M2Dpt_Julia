@@ -2,10 +2,10 @@ using Printf
 #################################################
 
 if USE_GPU
-	ENV["CUDA_VISIBLE_DEVICES"]=ENV["SLURM_LOCALID"]
+	#ENV["CUDA_VISIBLE_DEVICES"]=ENV["SLURM_LOCALID"]
 	using CUDAdrv, CUDAnative, CuArrays
-	myzeros(dims...) = cuzeros(DAT, dims...);
-	myones(dims...)  = cuones(DAT, dims...);
+	myzeros(dims...) = CuArrays.zeros(DAT, dims...);
+	myones(dims...)  = CuArrays.ones(DAT, dims...);
 	myrand(dims...)  = CuArray(rand(DAT, dims...));
 	DatArray         = CuArray{DAT,3}
 	DatArray_k       = CuDeviceArray{DAT,3} # to be used inside kernels
@@ -222,6 +222,7 @@ function ExCentroid2VyOnCPU!( Ty, fc_ex )
 
 	nx,ny,nz=size(fc_ex,1),size(fc_ex,2),size(fc_ex,3)
 	fv  = myzeros(nx-1,ny-1,nz-1)
+	fv = Array(fv);
 	@. fv += 1.0/8.0 * fc_ex[1:end-1,1:end-1,1:end-1]
 	@. fv += 1.0/8.0 * fc_ex[2:end-0,1:end-1,1:end-1]
 	@. fv += 1.0/8.0 * fc_ex[1:end-1,2:end-0,1:end-1]
@@ -237,7 +238,4 @@ function ExCentroid2VyOnCPU!( Ty, fc_ex )
 	@. Ty += 1.0/4.0 * fv[2:end-0,:,2:end-0]
 	@. Ty += 1.0/4.0 * fv[1:end-1,:,2:end-0]
 	@. Ty += 1.0/4.0 * fv[2:end-0,:,1:end-1]
-
-	@printf("Interpolation done! min(fvy) = %f - max(fvy) = %f\n", minimum(Ty), maximum(Ty) )
-
 end
