@@ -123,6 +123,7 @@ zC = 0.5*(zmin+zmax)
 # yC = 0.1
 # zC = 0.5*(zmin+zmax)
 @. Tc_ex = exp(-(xce2-xC)^2/ 0.001 - (yce2-yC)^2/ 0.001 - (zce2-zC)^2/ 0.001)
+display(maximum_g(Tc_ex))
 
 # Compute Courant criteria
 dt = 0.25*min(dx,dy,dz) / max( maximum_g(Vx), maximum_g(Vy), maximum_g(Vz))
@@ -151,10 +152,10 @@ dTdxp     =  myzeros(nx+0,ny+0,nz+0);
 # display(minimum_g(Vzp))
 
 order = 2;
-a     = 1;
-b     = 1;
-c     = 1;
-d     = 1;
+a     = 0;
+b     = 0;
+c     = 0;
+d     = 0;
 
 Tc  =  Tc_ex[2:end-1,2:end-1,2:end-1]
 T   =  myzeros(nx+0,ny+0,nz+0);
@@ -181,10 +182,15 @@ w1  =  myzeros(nx+0,ny+0,nz+0);
 w2  =  myzeros(nx+0,ny+0,nz+0);
 w3  =  myzeros(nx+0,ny+0,nz+0);
 e   =  myzeros(nx+0,ny+0,nz+0);
+dTdxp  =  myzeros(nx+0,ny+0,nz+0);
+dTdxm  =  myzeros(nx+0,ny+0,nz+0);
+Told  =  myzeros(nx+0,ny+0,nz+0);
+T1t  =  myzeros(nx+0,ny+0,nz+0);
 
 time = 0
 
-for it=1:nit
+
+for it=1:50
 
     time += dt
 
@@ -244,23 +250,24 @@ for it=1:nit
     # end
     # @. Tc_ex[2:end-1,2:end-1,2:end-1] = (1.0/order)*Tc_ex[2:end-1,2:end-1,2:end-1] + (1.0-1.0/order)*Told;
 
-    Told = Tc_ex[2:end-1,2:end-1,2:end-1];
-    T1   = Told
+    @. Told .= Tc_ex[2:end-1,2:end-1,2:end-1];
+    @. T1t  .= Tc_ex[2:end-1,2:end-1,2:end-1]
     for io=1:order
+        @. Tc_ex[2:end-1,2:end-1,2:end-1] = T1t
         @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
         @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-        @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-        @. dTdxp = 1/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
-        @. dTdxm = 1/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
-        @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vxp*dTdxm + Vxm*dTdxp);
+        @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+        @. dTdxp = 1.0/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
+        @. dTdxm = 1.0/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
+        @. T1t = T1t - dt*(Vxp*dTdxm + Vxm*dTdxp);
     end
-    @. Tc_ex[2:end-1,2:end-1,2:end-1] = (1.0/order)*Tc_ex[2:end-1,2:end-1,2:end-1] + (1.0-1.0/order)*Told;
+    @. Tc_ex[2:end-1,2:end-1,2:end-1] = (1.0/order)*T1t + (1.0-(1.0/order))*Told;
 
     # Told = Tc_ex[2:end-1,2:end-1,2:end-1];
     # for io=1:order
     #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
     #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
     #     @. dTdxp = 1/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
     #     @. dTdxm = 1/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
     #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vxp*dTdxm + Vxm*dTdxp);
@@ -271,7 +278,7 @@ for it=1:nit
     # for io=1:order
     #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
     #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
     #     @. dTdxp = 1/dy*(Tc_ex[2:end-1,3:end-0,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
     #     @. dTdxm = 1/dy*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,1:end-2,2:end-1])
     #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vyp*dTdxm + Vym*dTdxp);
@@ -282,7 +289,7 @@ for it=1:nit
     # for io=1:order
     #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
     #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
     #     @. dTdxp = 1/dz*(Tc_ex[2:end-1,2:end-1,3:end-0] - Tc_ex[2:end-1,2:end-1,2:end-1])
     #     @. dTdxm = 1/dz*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,1:end-2])
     #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vzp*dTdxm + Vzm*dTdxp);
@@ -291,6 +298,7 @@ for it=1:nit
 
 end
 
+display(maximum_g(Tc_ex[2:end-1,2:end-1,2:end-1]))
 display(xC + time*1.0)
 
 if (Vizu == 1)
