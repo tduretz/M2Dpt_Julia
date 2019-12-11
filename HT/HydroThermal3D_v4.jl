@@ -9,7 +9,7 @@ end
 const USE_MPI  = false
 const DAT      = Float64   # Precision (Float64 or Float32)
 const disksave = false     # save results to disk in binary format
-include("./Macros.jl")       # Include macros - Cachemisère
+include("../Macros.jl")       # Include macros - Cachemisère
 using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=12' (used for loops with @threads macro).
 using Printf, Statistics
 using LinearAlgebra

@@ -1,8 +1,10 @@
-const USE_GPU  = false
-const USE_MPI  = false
-const DAT      = Float64   # Precision (Float64 or Float32)
-include("../HT/Macros.jl")
-include("./AdvectionSchemes.jl")
+const vectorized = 0
+const Upwind     = 0
+const USE_GPU    = false
+const USE_MPI    = false
+const DAT        = Float64   # Precision (Float64 or Float32)
+include("../Macros.jl")
+# include("./AdvectionSchemes.jl")
 using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=12' (used for loops with @threads macro).
 using Plots
 
@@ -17,7 +19,6 @@ using Plots
         if ( Vx[ix+1,iy,iz] > 0.0 ) Vxp[ix,iy,iz] = Vx[ix+1,iy,iz]
         else                        Vxp[ix,iy,iz] = 0.0
         end
-        # if (@participate_a(vxm) )  @all(vxm) = @all(R) +  Dx*@d_xa(qx) + Dy*@d_ya(qy) + Dz*@d_za(qz); end
     end
     return nothing
 end
@@ -31,7 +32,6 @@ end
         if ( Vy[ix,iy+1,iz] > 0.0 ) Vyp[ix,iy,iz] = Vy[ix,iy+1,iz]
         else                        Vyp[ix,iy,iz] = 0.0
         end
-        # if (@participate_a(vxm) )  @all(vxm) = @all(R) +  Dx*@d_xa(qx) + Dy*@d_ya(qy) + Dz*@d_za(qz); end
     end
     return nothing
 end
@@ -45,47 +45,6 @@ end
         if ( Vz[ix,iy,iz+1] > 0.0 ) Vzp[ix,iy,iz] = Vz[ix,iy,iz+1]
         else                        Vzp[ix,iy,iz] = 0.0
         end
-        # if (@participate_a(vxm) )  @all(vxm) = @all(R) +  Dx*@d_xa(qx) + Dy*@d_ya(qy) + Dz*@d_za(qz); end
-    end
-    return nothing
-end
-
-
-@views function CrazyMax(e::DatArray_k, v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-
-    # e     = 10^(-99) + 1e-6*max(max(max(max(v1.^2,v2.^2),v3.^2),v4.^2),v5.^2);
-    @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        result = max(max(max(max(v1[ix,iy,iz]^2,v2[ix,iy,iz].^2), v3[ix,iy,iz]^2), v4[ix,iy,iz]^2), v5[ix,iy,iz]^2);
-        e[ix,iy,iz]     = 10^(-99) + 1e-6*result
-    end
-    return nothing
-end
-
-@views function ComputeCoeffs_Weno5(p1::DatArray_k, p2::DatArray_k, p3::DatArray_k, v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-
-    @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        if @participate_a(p1) @all(p1) = @all(v1)/3.0 - 7.0/6.0*@all(v2) + 11.0/6.0*@all(v3); end
-        if @participate_a(p2) @all(p2) =-@all(v2)/6.0 + 5.0/6.0*@all(v3) + @all(v4)/3.0;      end
-        if @participate_a(p3) @all(p3) = @all(v3)/3.0 + 5.0/6.0*@all(v4) - @all(v5)/6.0;      end
-    end
-    return nothing
-end
-
-@views function Compute_dFdxi_Weno5(w1::DatArray_k, w2::DatArray_k, w3::DatArray_k, dTdxi::DatArray_k, e::DatArray_k, p1::DatArray_k, p2::DatArray_k, p3::DatArray_k, v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-
-    @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        # LUDO ici w1, w2, w3 et e pourrait en fait etre des scalaires et non pas des tableaux - on peut faire ça?
-        if @participate_a(w1)    @all(w1) = 13.0/12.0*(@all(v1)-2.0*@all(v2)+@all(v3))^2.0 + 1.0/4.0*(@all(v1)-4.0*@all(v2)+3.0*@all(v3))^2.0; end
-        if @participate_a(w2)    @all(w2) = 13.0/12.0*(@all(v2)-2.0*@all(v3)+@all(v4))^2.0 + 1.0/4.0*(@all(v2)-@all(v4))^2.0; end
-        if @participate_a(w3)    @all(w3) = 13.0/12.0*(@all(v3)-2.0*@all(v4)+@all(v5))^2.0 + 1.0/4.0*(3.0*@all(v3)-4.0*@all(v4)+@all(v5))^2.0; end
-        if @participate_a(w1)    @all(w1) = 0.1/(@all(w1)+@all(e))^2.0; end
-        if @participate_a(w2)    @all(w2) = 0.6/(@all(w2)+@all(e))^2.0; end
-        if @participate_a(w3)    @all(w3) = 0.3/(@all(w3)+@all(e))^2.0; end
-        if @participate_a(e)     @all(e)  = @all(w1)+@all(w2)+@all(w3); end
-        if @participate_a(w1)    @all(w1) = @all(w1)/@all(e); end
-        if @participate_a(w2)    @all(w2) = @all(w2)/@all(e); end
-        if @participate_a(w3)    @all(w3) = @all(w3)/@all(e); end
-        if @participate_a(dTdxi) @all(dTdxi)= @all(w1)*@all(p1) + @all(w2)*@all(p2) + @all(w3)*@all(p3); end
     end
     return nothing
 end
@@ -119,93 +78,54 @@ end
 return nothing
 end
 
-# @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
-# @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
-# @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
-# @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
-# @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
+@views function Gradients_minus_x_Weno5(v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, Fc_exxx::DatArray_k, dx::Float64, dy::Float64, dz::Float64, nx::Integer, ny::Integer, nz::Integer)
 
-@views function Gradients_minus_x_Weno5(v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, Fc_exxx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-
-    # @. v1    = 1.0/dx*(Fc_exxx[2:end-5,4:end-3,4:end-3]-Fc_exxx[1:end-6,4:end-3,4:end-3]);
-    @. v2    = 1.0/dx*(Fc_exxx[3:end-4,4:end-3,4:end-3]-Fc_exxx[2:end-5,4:end-3,4:end-3]);
-    @. v3    = 1.0/dx*(Fc_exxx[4:end-3,4:end-3,4:end-3]-Fc_exxx[3:end-4,4:end-3,4:end-3]);
-    @. v4    = 1.0/dx*(Fc_exxx[5:end-2,4:end-3,4:end-3]-Fc_exxx[4:end-3,4:end-3,4:end-3]);
-    @. v5    = 1.0/dx*(Fc_exxx[7:end-0,4:end-3,4:end-3]-Fc_exxx[5:end-2,4:end-3,4:end-3]);
-    @threadids_or_loop (nx+6,ny+6,nz+6) begin
-        if @participate_a(v1) @all(v1) = 1.0/dx*( @in_xxx_xm2(Fc_exxx) -  @in_xxx_xm3(Fc_exxx) ); end
-        # if @participate_a(v2) @all(v2) = 1.0/dx*( @in_xxx_xm1(Fc_exxx) -  @in_xxx_xm2(Fc_exxx) ); end
-        # if @participate_a(v3) @all(v3) = 1.0/dx*( @in_xxx(Fc_exxx)     -  @in_xxx_xm1(Fc_exxx) ); end
-        # if @participate_a(v4) @all(v4) = 1.0/dx*( @in_xxx_xp1(Fc_exxx) -  @in_xxx(Fc_exxx) ); end
-        # if @participate_a(v5) @all(v5) = 1.0/dx*( @in_xxx_xp2(Fc_exxx) -  @in_xxx_xp1(Fc_exxx) ); end
+    if vectorized == 1
+        # Vectorized style - slow but faster than @threadids_or_loop
+        @. v1    = 1.0/dx*(Fc_exxx[2:end-5,4:end-3,4:end-3]-Fc_exxx[1:end-6,4:end-3,4:end-3]);
+        @. v2    = 1.0/dx*(Fc_exxx[3:end-4,4:end-3,4:end-3]-Fc_exxx[2:end-5,4:end-3,4:end-3]);
+        @. v3    = 1.0/dx*(Fc_exxx[4:end-3,4:end-3,4:end-3]-Fc_exxx[3:end-4,4:end-3,4:end-3]);
+        @. v4    = 1.0/dx*(Fc_exxx[5:end-2,4:end-3,4:end-3]-Fc_exxx[4:end-3,4:end-3,4:end-3]);
+        @. v5    = 1.0/dx*(Fc_exxx[6:end-1,4:end-3,4:end-3]-Fc_exxx[5:end-2,4:end-3,4:end-3]);
+    else
+        @threadids_or_loop (nx+6,ny+6,nz+6) begin
+            ixiii = ix + 3
+            iyiii = iy + 3
+            iziii = iz + 3
+            if @participate_a(v1) @all(v1) = 1.0/dx*( @in_xxx_xm2(Fc_exxx) -  @in_xxx_xm3(Fc_exxx) ); end
+            if @participate_a(v2) @all(v2) = 1.0/dx*( @in_xxx_xm1(Fc_exxx) -  @in_xxx_xm2(Fc_exxx) ); end
+            if @participate_a(v3) @all(v3) = 1.0/dx*(     @in_xxx(Fc_exxx) -  @in_xxx_xm1(Fc_exxx) ); end
+            if @participate_a(v4) @all(v4) = 1.0/dx*( @in_xxx_xp1(Fc_exxx) -      @in_xxx(Fc_exxx) ); end
+            if @participate_a(v5) @all(v5) = 1.0/dx*( @in_xxx_xp2(Fc_exxx) -  @in_xxx_xp1(Fc_exxx) ); end
+        end
     end
 return nothing
 end
 
-# # CPU version - extremely slow
-# @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
-# @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
-# @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
-# @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
-# @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
-# @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
-# @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
-# @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
-# CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz)
-# @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
-# @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
-# @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
-# @. w1    = 0.1/(w1+e)^2.0;
-# @. w2    = 0.6/(w2+e)^2.0;
-# @. w3    = 0.3/(w3+e)^2.0;
-# @. e     = (w1+w2+w3)
-# @. w1    = w1/e;
-# @. w2    = w2/e;
-# @. w3    = w3/e;
-# @. dTdxm = w1*p1 + w2*p2 + w3*p3; # minus x
-
 ############################################################
 
 @views function MainWeno()
-
+# General
 Vizu   = 1
-Upwind = 0
-
+order  = 2;
+nit    = 50;
+# Domain
 xmin     = -0.0;  xmax    =    1; Lx = xmax - xmin;
 ymin     = -0.0;  ymax    =    1; Ly = ymax - ymin;
 zmin     = -0.00; zmax    =    1; Lz = zmax - zmin;
-
 # Numerics
 nt       = 1
 nout     = 100;
 nx       = 4*32;
 ny       = 4*32;
 nz       = 4*32;
-
 Nix      = USE_MPI ? nx_g() : nx;                                               #SO: TODO: this is obtained from the global_grid for MPI.
 Niy      = USE_MPI ? ny_g() : ny;                                               #SO: this is obtained from the global_grid.
 Niz      = USE_MPI ? nz_g() : nz;
 dx       = Lx/Nix;                                                              #SO: why not dx = Lx/(nx-1) or dx = Lx/(Nix-1) respectively
 dy       = Ly/Niy;
 dz       = Lz/Niz;
-
-
-Vx      =  myones(nx+1,ny+0,nz+0);
-Vy      =  myzeros(nx+0,ny+1,nz+0);
-Vz      =  myzeros(nx+0,ny+0,nz+1);
-# Vx      =  myones(nx+1,ny+0,nz+0);
-# Vy      =  myones(nx+0,ny+1,nz+0);
-# Vz      =  myzeros(nx+0,ny+0,nz+1);
-
-VxC     =  myzeros(nx+0,ny+0,nz+0);
-VyC     =  myzeros(nx+0,ny+0,nz+0);
-VzC     =  myzeros(nx+0,ny+0,nz+0);
-Tc_ex   =  myzeros(nx+2,ny+2,nz+2);
-
-@. VxC     =  0.5*(Vx[1:end-1,:,:] + Vx[2:end-0,:,:] );
-@. VyC     =  0.5*(Vy[:,1:end-1,:] + Vy[:,2:end-0,:] );
-@. VzC     =  0.5*(Vz[:,:,1:end-1] + Vz[:,:,2:end-0] );
-
+# Grid
 xc  = LinRange(xmin+dx/2, xmax-dx/2, nx)
 yc  = LinRange(ymin+dy/2, ymax-dy/2, ny)
 zc  = LinRange(xmin+dz/2, zmax-dz/2, nz)
@@ -219,22 +139,18 @@ zv  = LinRange(xmin, zmax, nz+1)
 (xc2,yc2,zc2)    = ([x for x=xc,y=yc,z=zc], [y for x=xc,y=yc,z=zc], [z for x=xc,y=yc,z=zc]); #SO: Replaced [Xc,Yc,Zc] = ndgrid(xc,yc,zc); because ndgrid does not exist. Again, this can be beautifully solved with array comprehensions.
 (xv2,yv2,zv2)    = ([x for x=xv,y=yv,z=zv], [y for x=xv,y=yv,z=zv], [z for x=xv,y=yv,z=zv]);
 @printf("Grid was set up!\n")
-
-xC = 0.1
-yC = 0.1
-zC = 0.5*(zmin+zmax)
-# xC = 0.1
-# yC = 0.1
-# zC = 0.5*(zmin+zmax)
-@. Tc_ex = exp(-(xce2-xC)^2/ 0.001 - (yce2-yC)^2/ 0.001 - (zce2-zC)^2/ 0.001)
-display(maximum_g(Tc_ex))
-
+# Initial conditions
+Vx       =   myones(nx+1,ny+0,nz+0);
+Vy       =  myzeros(nx+0,ny+1,nz+0);
+Vz       =  myzeros(nx+0,ny+0,nz+1);
+Tc       =  myzeros(nx+0,ny+0,nz+0);
+xC       = 0.1
+yC       = 0.5*(ymin+ymax)
+zC       = 0.5*(zmin+zmax)
+@. Tc    = exp(-(xc2-xC)^2/ 0.001 - (yc2-yC)^2/ 0.001 - (zc2-zC)^2/ 0.001)
 # Compute Courant criteria
 dt = 0.25*min(dx,dy,dz) / max( maximum_g(Vx), maximum_g(Vy), maximum_g(Vz))
-display(max( maximum_g(Vx), maximum_g(Vy), maximum_g(Vz)))
-display(dt)
-
-# upwind velocities
+# Upwind velocities
 Vxm     =  myzeros(nx+0,ny+0,nz+0);
 Vxp     =  myzeros(nx+0,ny+0,nz+0);
 VxPlusMinus(Vxm, Vxp, Vx, nx, ny, nz)
@@ -244,174 +160,87 @@ VyPlusMinus(Vym, Vyp, Vy, nx, ny, nz)
 Vzm     =  myzeros(nx+0,ny+0,nz+0);
 Vzp     =  myzeros(nx+0,ny+0,nz+0);
 VzPlusMinus(Vzm, Vzp, Vz, nx, ny, nz)
-
-dTdxm     =  myzeros(nx+0,ny+0,nz+0);
-dTdxp     =  myzeros(nx+0,ny+0,nz+0);
-
-# display(minimum_g(Vxm))
-# display(minimum_g(Vxp))
-# display(minimum_g(Vym))
-# display(minimum_g(Vyp))
-# display(minimum_g(Vzm))
-# display(minimum_g(Vzp))
-
-order = 2;
-a     = 0;
-b     = 0;
-c     = 0;
-d     = 0;
-
-Tc  =  Tc_ex[2:end-1,2:end-1,2:end-1]
-
-nit = 50;
-
-Tc_exxx = myzeros(nx+6,ny+6,nz+6)
-v1  =  myzeros(nx+0,ny+0,nz+0);
-v2  =  myzeros(nx+0,ny+0,nz+0);
-v3  =  myzeros(nx+0,ny+0,nz+0);
-v4  =  myzeros(nx+0,ny+0,nz+0);
-v5  =  myzeros(nx+0,ny+0,nz+0);
-p1  =  myzeros(nx+0,ny+0,nz+0);
-p2  =  myzeros(nx+0,ny+0,nz+0);
-p3  =  myzeros(nx+0,ny+0,nz+0);
-w1  =  myzeros(nx+0,ny+0,nz+0);
-w2  =  myzeros(nx+0,ny+0,nz+0);
-w3  =  myzeros(nx+0,ny+0,nz+0);
-e   =  myzeros(nx+0,ny+0,nz+0);
-dTdxp  =  myzeros(nx+0,ny+0,nz+0);
-dTdxm  =  myzeros(nx+0,ny+0,nz+0);
-Told   =  myzeros(nx+0,ny+0,nz+0);
-
-time = 0
-
-
-for it=1:50
+# Pre-processing
+Tc_exxx =  myzeros(nx+6,ny+6,nz+6)
+Tc_ex   =  myzeros(nx+2,ny+2,nz+2)
+v1      =  myzeros(nx+0,ny+0,nz+0);
+v2      =  myzeros(nx+0,ny+0,nz+0);
+v3      =  myzeros(nx+0,ny+0,nz+0);
+v4      =  myzeros(nx+0,ny+0,nz+0);
+v5      =  myzeros(nx+0,ny+0,nz+0);
+dTdxp   =  myzeros(nx+0,ny+0,nz+0);
+dTdxm   =  myzeros(nx+0,ny+0,nz+0);
+Told    =  myzeros(nx+0,ny+0,nz+0);
+time   = 0
+# Time loop
+for it=1:nit
 
     time += dt
 
-    if Upwind == 0
-
-    @. Told = Tc;
-    for io=1:order
-
-        # Weno 5
-        @. Tc_exxx[4:end-3,4:end-3,4:end-3] = Tc;
-        @. Tc_exxx[3    ,4:end-3,4:end-3] =  Tc[1  ,:,:]; @. Tc_exxx[2    ,4:end-3,4:end-3] =  Tc[1  ,:,:];; @. Tc_exxx[1    ,4:end-3,4:end-3] =  Tc[  1,:,:];
-        @. Tc_exxx[end  ,4:end-3,4:end-3] =  Tc[end,:,:]; @. Tc_exxx[end-1,4:end-3,4:end-3] =  Tc[end,:,:];; @. Tc_exxx[end-2,4:end-3,4:end-3] =  Tc[end,:,:];
-
-            # @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
-            # @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
-            # @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
-            # @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
-            # @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
-            @kernel cublocks cuthreads Gradients_minus_x_Weno5(v1, v2, v3, v4, v5, Tc_exxx, nx, ny, nz); @devicesync();
+    if Upwind == 0 # --- WENO-5
+        @. Told = Tc;
+        for io=1:order
+            # Weno 5
+            @. Tc_exxx[4:end-3,4:end-3,4:end-3] = Tc;
+            @. Tc_exxx[3      ,4:end-3,4:end-3] = Tc[1  ,:,:]; @. Tc_exxx[2    ,4:end-3,4:end-3] =  Tc[1  ,:,:];; @. Tc_exxx[1    ,4:end-3,4:end-3] =  Tc[  1,:,:];
+            @. Tc_exxx[end    ,4:end-3,4:end-3] = Tc[end,:,:]; @. Tc_exxx[end-1,4:end-3,4:end-3] =  Tc[end,:,:];; @. Tc_exxx[end-2,4:end-3,4:end-3] =  Tc[end,:,:];
+            @kernel cublocks cuthreads Gradients_minus_x_Weno5(v1, v2, v3, v4, v5, Tc_exxx, dx, dy, dz, nx, ny, nz); @devicesync();
             @kernel cublocks cuthreads dFdx_Weno5(dTdxm, v1, v2, v3, v4, v5, nx, ny, nz); @devicesync();
-            # @kernel cublocks cuthreads ComputeCoeffs_Weno5(p1, p2, p3, v1, v2, v3, v4, v5, nx, ny, nz); @devicesync();
-            # @kernel cublocks cuthreads CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz);               @devicesync();
-            # # @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
-            # # @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
-            # # @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
-            # # @. w1    = 0.1/(w1+e)^2.0;
-            # # @. w2    = 0.6/(w2+e)^2.0;
-            # # @. w3    = 0.3/(w3+e)^2.0;
-            # # @. e     = (w1+w2+w3)
-            # # @. w1    = w1/e;
-            # # @. w2    = w2/e;
-            # # @. w3    = w3/e;
-            # # @. dTdxm = w1*p1 + w2*p2 + w3*p3; # minus x
-            # @kernel cublocks cuthreads Compute_dFdxi_Weno5(w1, w2, w3, dTdxm, e, p1, p2, p3, v1, v2, v3, v4, v5, nx, ny, nz)
-            #
-            # #
-            # # @. v1    = 1.0/dx*(Tc_exxx[7:end+0,4:end-3,4:end-3]-Tc_exxx[6:end-1,4:end-3,4:end-3]);
-            # # @. v2    = 1.0/dx*(Tc_exxx[6:end-1,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
-            # # @. v3    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
-            # # @. v4    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
-            # # @. v5    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
-            # # @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
-            # # @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
-            # # @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
-            # # CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz)
-            # # @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
-            # # @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
-            # # @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
-            # # @. w1    = 0.1/(w1+e)^2.0;
-            # # @. w2    = 0.6/(w2+e)^2.0;
-            # # @. w3    = 0.3/(w3+e)^2.0;
-            # # @. e     = (w1+w2+w3)
-            # # @. w1    = w1/e;
-            # # @. w2    = w2/e;
-            # # @. w3    = w3/e;
-            # # @. dTdxp = w1*p1 + w2*p2 + w3*p3; # minus x
-
-
-        @. Tc = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
-    end
-    @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
-
+            @. Tc = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
+        end
+        @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
     end
 
     if Upwind == 1
-    # # Function call - super slow
-    # Upwind(Tc,Told,Tc_ex,dTdxp,dTdxm,Vxp,Vxm,Vyp,Vym,Vzp,Vzm,dx,dy,dz,dt,order)
+        # # Function call - super slow
+        # Upwind(Tc,Told,Tc_ex,dTdxp,dTdxm,Vxp,Vxm,Vyp,Vym,Vzp,Vzm,dx,dy,dz,dt,order)
 
-    # # Without function call - very slow
-    @. Told = Tc;
-      for io=1:order
-          @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
-          @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-          @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-          @. dTdxp = 1.0/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
-          @. dTdxm = 1.0/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
-          @. Tc    = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
-      end
-      @. Tc = (1.0/order)*Tc + (1.0-(1.0/order))*Told;
+        # # Without function call - very slow
+        @. Told = Tc;
+        for io=1:order
+            @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc
+            @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
+            @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
+            @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+            @. dTdxp = 1.0/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
+            @. dTdxm = 1.0/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
+            @. Tc    = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
+        end
+        @. Tc = (1.0/order)*Tc + (1.0-(1.0/order))*Told;
 
-      @. Told = Tc
-      for io=1:order
-          @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
-          @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-          @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-          @. dTdxp = 1.0/dy*(Tc_ex[2:end-1,3:end-0,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
-          @. dTdxm = 1.0/dy*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,1:end-2,2:end-1])
-          @. Tc    = Tc - dt*(Vyp*dTdxm + Vym*dTdxp);
-      end
-      @. Tc = (1.0/order)*Tc + (1.0-(1.0/order))*Told;
-
-      @. Told = Tc;
-      for io=1:order
-          @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
-          @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-          @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-          @. dTdxp = 1.0/dz*(Tc_ex[2:end-1,2:end-1,3:end-0] - Tc_ex[2:end-1,2:end-1,2:end-1])
-          @. dTdxm = 1.0/dz*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,1:end-2])
-          @. Tc    = Tc - dt*(Vzp*dTdxm + Vzm*dTdxp);
-      end
-      @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
-
-  end
-
+        # @. Told = Tc
+        # for io=1:order
+        #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc
+        #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
+        #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
+        #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+        #     @. dTdxp = 1.0/dy*(Tc_ex[2:end-1,3:end-0,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
+        #     @. dTdxm = 1.0/dy*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,1:end-2,2:end-1])
+        #     @. Tc    = Tc - dt*(Vyp*dTdxm + Vym*dTdxp);
+        # end
+        # @. Tc = (1.0/order)*Tc + (1.0-(1.0/order))*Told;
+        #
+        # @. Told = Tc;
+        # for io=1:order
+        #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc
+        #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
+        #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
+        #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+        #     @. dTdxp = 1.0/dz*(Tc_ex[2:end-1,2:end-1,3:end-0] - Tc_ex[2:end-1,2:end-1,2:end-1])
+        #     @. dTdxm = 1.0/dz*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,1:end-2])
+        #     @. Tc    = Tc - dt*(Vzp*dTdxm + Vzm*dTdxp);
+        # end
+        # @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
+    end
 end
 
-display(maximum_g(Tc_ex[2:end-1,2:end-1,2:end-1]))
 display(xC + time*1.0)
 display(yC + time*1.0)
 
 if (Vizu == 1)
     X = Tc
     display( heatmap(xc, yc, transpose(X[:,:,Int(ceil(nz/2))]),c=:viridis,aspect_ratio=1) );
-    # fx = VxC[:,:,Int(ceil(nz/2))]
-    # fy = VyC[:,:,Int(ceil(nz/2))]
-    # x  = xc2[:,:,Int(ceil(nz/2))]
-    # y  = yc2[:,:,Int(ceil(nz/2))]
-    # display(size(x))
-    # display(size(y))
-    # display(size(fx))
-    # display(size(fy))
-    # quiver(x,y,quiver=(fx,fy))
-    # u, v = rand(10),rand(10);
-    # display( quiver(rand(10), gradient=(u,v)) )
     @printf("Image sliced at z index %d over nx = %d, ny = %d, nz = %d\n", Int(ceil(nz/2)), nx, ny, nz)
-    # display( heatmap(transpose(T_v[:,Int(ceil(ny_v/2)),:]),c=:viridis,aspect_ratio=1) );
 end
 
 end
