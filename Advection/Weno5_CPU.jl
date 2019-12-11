@@ -61,7 +61,7 @@ end
     return nothing
 end
 
-@views function ComputeCoeffs(p1::DatArray_k, p2::DatArray_k, p3::DatArray_k, v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+@views function ComputeCoeffs_Weno5(p1::DatArray_k, p2::DatArray_k, p3::DatArray_k, v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
 
     @threadids_or_loop (nx+0,ny+0,nz+0) begin
         if @participate_a(p1) @all(p1) = @all(v1)/3.0 - 7.0/6.0*@all(v2) + 11.0/6.0*@all(v3); end
@@ -70,6 +70,99 @@ end
     end
     return nothing
 end
+
+@views function Compute_dFdxi_Weno5(w1::DatArray_k, w2::DatArray_k, w3::DatArray_k, dTdxi::DatArray_k, e::DatArray_k, p1::DatArray_k, p2::DatArray_k, p3::DatArray_k, v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        # LUDO ici w1, w2, w3 et e pourrait en fait etre des scalaires et non pas des tableaux - on peut faire ça?
+        if @participate_a(w1)    @all(w1) = 13.0/12.0*(@all(v1)-2.0*@all(v2)+@all(v3))^2.0 + 1.0/4.0*(@all(v1)-4.0*@all(v2)+3.0*@all(v3))^2.0; end
+        if @participate_a(w2)    @all(w2) = 13.0/12.0*(@all(v2)-2.0*@all(v3)+@all(v4))^2.0 + 1.0/4.0*(@all(v2)-@all(v4))^2.0; end
+        if @participate_a(w3)    @all(w3) = 13.0/12.0*(@all(v3)-2.0*@all(v4)+@all(v5))^2.0 + 1.0/4.0*(3.0*@all(v3)-4.0*@all(v4)+@all(v5))^2.0; end
+        if @participate_a(w1)    @all(w1) = 0.1/(@all(w1)+@all(e))^2.0; end
+        if @participate_a(w2)    @all(w2) = 0.6/(@all(w2)+@all(e))^2.0; end
+        if @participate_a(w3)    @all(w3) = 0.3/(@all(w3)+@all(e))^2.0; end
+        if @participate_a(e)     @all(e)  = @all(w1)+@all(w2)+@all(w3); end
+        if @participate_a(w1)    @all(w1) = @all(w1)/@all(e); end
+        if @participate_a(w2)    @all(w2) = @all(w2)/@all(e); end
+        if @participate_a(w3)    @all(w3) = @all(w3)/@all(e); end
+        if @participate_a(dTdxi) @all(dTdxi)= @all(w1)*@all(p1) + @all(w2)*@all(p2) + @all(w3)*@all(p3); end
+    end
+    return nothing
+end
+
+@views function dFdx_Weno5(dFdxi::DatArray_k, V1::DatArray_k, V2::DatArray_k, V3::DatArray_k, V4::DatArray_k, V5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        v1 = V1[ix,iy,iz]
+        v2 = V2[ix,iy,iz]
+        v3 = V3[ix,iy,iz]
+        v4 = V4[ix,iy,iz]
+        v5 = V5[ix,iy,iz]
+        p1   = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3
+        p2   =-v2/6.0 + 5.0/6.0*v3 + v4/3.0
+        p3   = v3/3.0 + 5.0/6.0*v4 - v5/6.0
+        maxV = max(max(max(max(v1^2,v2^2), v3^2), v4^2), v5^2)
+        e    = 10^(-99) + 1e-6*maxV
+        w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
+        w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
+        w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
+        w1    = 0.1/(w1+e)^2.0;
+        w2    = 0.6/(w2+e)^2.0;
+        w3    = 0.3/(w3+e)^2.0;
+        w     = (w1+w2+w3)
+        w1    = w1/w;
+        w2    = w2/w;
+        w3    = w3/w;
+        # dFdxi[ix,iy,iz] = w1*p1 + w2*p2 + w3*p3
+        if @participate_a(dFdxi) @all(dFdxi)= w1*p1 + w2*p2 + w3*p3; end
+    end
+return nothing
+end
+
+# @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
+# @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
+# @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
+# @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
+# @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
+
+@views function Gradients_minus_x_Weno5(v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, Fc_exxx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    # @. v1    = 1.0/dx*(Fc_exxx[2:end-5,4:end-3,4:end-3]-Fc_exxx[1:end-6,4:end-3,4:end-3]);
+    @. v2    = 1.0/dx*(Fc_exxx[3:end-4,4:end-3,4:end-3]-Fc_exxx[2:end-5,4:end-3,4:end-3]);
+    @. v3    = 1.0/dx*(Fc_exxx[4:end-3,4:end-3,4:end-3]-Fc_exxx[3:end-4,4:end-3,4:end-3]);
+    @. v4    = 1.0/dx*(Fc_exxx[5:end-2,4:end-3,4:end-3]-Fc_exxx[4:end-3,4:end-3,4:end-3]);
+    @. v5    = 1.0/dx*(Fc_exxx[7:end-0,4:end-3,4:end-3]-Fc_exxx[5:end-2,4:end-3,4:end-3]);
+    @threadids_or_loop (nx+6,ny+6,nz+6) begin
+        if @participate_a(v1) @all(v1) = 1.0/dx*( @in_xxx_xm2(Fc_exxx) -  @in_xxx_xm3(Fc_exxx) ); end
+        # if @participate_a(v2) @all(v2) = 1.0/dx*( @in_xxx_xm1(Fc_exxx) -  @in_xxx_xm2(Fc_exxx) ); end
+        # if @participate_a(v3) @all(v3) = 1.0/dx*( @in_xxx(Fc_exxx)     -  @in_xxx_xm1(Fc_exxx) ); end
+        # if @participate_a(v4) @all(v4) = 1.0/dx*( @in_xxx_xp1(Fc_exxx) -  @in_xxx(Fc_exxx) ); end
+        # if @participate_a(v5) @all(v5) = 1.0/dx*( @in_xxx_xp2(Fc_exxx) -  @in_xxx_xp1(Fc_exxx) ); end
+    end
+return nothing
+end
+
+# # CPU version - extremely slow
+# @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
+# @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
+# @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
+# @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
+# @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
+# @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
+# @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
+# @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
+# CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz)
+# @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
+# @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
+# @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
+# @. w1    = 0.1/(w1+e)^2.0;
+# @. w2    = 0.6/(w2+e)^2.0;
+# @. w3    = 0.3/(w3+e)^2.0;
+# @. e     = (w1+w2+w3)
+# @. w1    = w1/e;
+# @. w2    = w2/e;
+# @. w3    = w3/e;
+# @. dTdxm = w1*p1 + w2*p2 + w3*p3; # minus x
 
 ############################################################
 
@@ -206,48 +299,50 @@ for it=1:50
         @. Tc_exxx[3    ,4:end-3,4:end-3] =  Tc[1  ,:,:]; @. Tc_exxx[2    ,4:end-3,4:end-3] =  Tc[1  ,:,:];; @. Tc_exxx[1    ,4:end-3,4:end-3] =  Tc[  1,:,:];
         @. Tc_exxx[end  ,4:end-3,4:end-3] =  Tc[end,:,:]; @. Tc_exxx[end-1,4:end-3,4:end-3] =  Tc[end,:,:];; @. Tc_exxx[end-2,4:end-3,4:end-3] =  Tc[end,:,:];
 
-            @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
-            @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
-            @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
-            @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
-            @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
-            # @kernel cublocks cuthreads ComputeCoeffs(p1, p2, p3, v1, v2, v3, v4, v5, nx, ny, nz); @devicesync();
-            # @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
-            # @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
-            # @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
-            @kernel cublocks cuthreads CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz);               @devicesync();
-            @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
-            @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
-            @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
-            @. w1    = 0.1/(w1+e)^2.0;
-            @. w2    = 0.6/(w2+e)^2.0;
-            @. w3    = 0.3/(w3+e)^2.0;
-            @. e     = (w1+w2+w3)
-            @. w1    = w1/e;
-            @. w2    = w2/e;
-            @. w3    = w3/e;
-            @. dTdxm = w1*p1 + w2*p2 + w3*p3; # minus x
+            # @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
+            # @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
+            # @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
+            # @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
+            # @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
+            @kernel cublocks cuthreads Gradients_minus_x_Weno5(v1, v2, v3, v4, v5, Tc_exxx, nx, ny, nz); @devicesync();
+            @kernel cublocks cuthreads dFdx_Weno5(dTdxm, v1, v2, v3, v4, v5, nx, ny, nz); @devicesync();
+            # @kernel cublocks cuthreads ComputeCoeffs_Weno5(p1, p2, p3, v1, v2, v3, v4, v5, nx, ny, nz); @devicesync();
+            # @kernel cublocks cuthreads CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz);               @devicesync();
+            # # @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
+            # # @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
+            # # @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
+            # # @. w1    = 0.1/(w1+e)^2.0;
+            # # @. w2    = 0.6/(w2+e)^2.0;
+            # # @. w3    = 0.3/(w3+e)^2.0;
+            # # @. e     = (w1+w2+w3)
+            # # @. w1    = w1/e;
+            # # @. w2    = w2/e;
+            # # @. w3    = w3/e;
+            # # @. dTdxm = w1*p1 + w2*p2 + w3*p3; # minus x
+            # @kernel cublocks cuthreads Compute_dFdxi_Weno5(w1, w2, w3, dTdxm, e, p1, p2, p3, v1, v2, v3, v4, v5, nx, ny, nz)
             #
-            # @. v1    = 1.0/dx*(Tc_exxx[7:end+0,4:end-3,4:end-3]-Tc_exxx[6:end-1,4:end-3,4:end-3]);
-            # @. v2    = 1.0/dx*(Tc_exxx[6:end-1,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
-            # @. v3    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
-            # @. v4    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
-            # @. v5    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
-            # @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
-            # @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
-            # @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
-            # CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz)
-            # @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
-            # @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
-            # @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
-            # @. w1    = 0.1/(w1+e)^2.0;
-            # @. w2    = 0.6/(w2+e)^2.0;
-            # @. w3    = 0.3/(w3+e)^2.0;
-            # @. e     = (w1+w2+w3)
-            # @. w1    = w1/e;
-            # @. w2    = w2/e;
-            # @. w3    = w3/e;
-            # @. dTdxp = w1*p1 + w2*p2 + w3*p3; # minus x
+            # #
+            # # @. v1    = 1.0/dx*(Tc_exxx[7:end+0,4:end-3,4:end-3]-Tc_exxx[6:end-1,4:end-3,4:end-3]);
+            # # @. v2    = 1.0/dx*(Tc_exxx[6:end-1,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
+            # # @. v3    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
+            # # @. v4    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
+            # # @. v5    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
+            # # @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
+            # # @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
+            # # @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
+            # # CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz)
+            # # @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
+            # # @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
+            # # @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
+            # # @. w1    = 0.1/(w1+e)^2.0;
+            # # @. w2    = 0.6/(w2+e)^2.0;
+            # # @. w3    = 0.3/(w3+e)^2.0;
+            # # @. e     = (w1+w2+w3)
+            # # @. w1    = w1/e;
+            # # @. w2    = w2/e;
+            # # @. w3    = w3/e;
+            # # @. dTdxp = w1*p1 + w2*p2 + w3*p3; # minus x
+
 
         @. Tc = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
     end
