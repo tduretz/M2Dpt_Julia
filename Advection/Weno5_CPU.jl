@@ -2,6 +2,7 @@ const USE_GPU  = false
 const USE_MPI  = false
 const DAT      = Float64   # Precision (Float64 or Float32)
 include("../HT/Macros.jl")
+include("./AdvectionSchemes.jl")
 using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=12' (used for loops with @threads macro).
 using Plots
 
@@ -60,12 +61,22 @@ end
     return nothing
 end
 
+@views function ComputeCoeffs(p1::DatArray_k, p2::DatArray_k, p3::DatArray_k, v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        if @participate_a(p1) @all(p1) = @all(v1)/3.0 - 7.0/6.0*@all(v2) + 11.0/6.0*@all(v3); end
+        if @participate_a(p2) @all(p2) =-@all(v2)/6.0 + 5.0/6.0*@all(v3) + @all(v4)/3.0;      end
+        if @participate_a(p3) @all(p3) = @all(v3)/3.0 + 5.0/6.0*@all(v4) - @all(v5)/6.0;      end
+    end
+    return nothing
+end
 
 ############################################################
 
 @views function MainWeno()
 
-Vizu = 1;
+Vizu   = 1
+Upwind = 0
 
 xmin     = -0.0;  xmax    =    1; Lx = xmax - xmin;
 ymin     = -0.0;  ymax    =    1; Ly = ymax - ymin;
@@ -117,7 +128,7 @@ zv  = LinRange(xmin, zmax, nz+1)
 @printf("Grid was set up!\n")
 
 xC = 0.1
-yC = 0.5*(ymin+ymax)
+yC = 0.1
 zC = 0.5*(zmin+zmax)
 # xC = 0.1
 # yC = 0.1
@@ -158,8 +169,6 @@ c     = 0;
 d     = 0;
 
 Tc  =  Tc_ex[2:end-1,2:end-1,2:end-1]
-T   =  myzeros(nx+0,ny+0,nz+0);
-T   = Tc;
 
 nit = 50;
 
@@ -172,20 +181,13 @@ v5  =  myzeros(nx+0,ny+0,nz+0);
 p1  =  myzeros(nx+0,ny+0,nz+0);
 p2  =  myzeros(nx+0,ny+0,nz+0);
 p3  =  myzeros(nx+0,ny+0,nz+0);
-s1  =  myzeros(nx+0,ny+0,nz+0);
-s2  =  myzeros(nx+0,ny+0,nz+0);
-s3  =  myzeros(nx+0,ny+0,nz+0);
-a1  =  myzeros(nx+0,ny+0,nz+0);
-a2  =  myzeros(nx+0,ny+0,nz+0);
-a3  =  myzeros(nx+0,ny+0,nz+0);
 w1  =  myzeros(nx+0,ny+0,nz+0);
 w2  =  myzeros(nx+0,ny+0,nz+0);
 w3  =  myzeros(nx+0,ny+0,nz+0);
 e   =  myzeros(nx+0,ny+0,nz+0);
 dTdxp  =  myzeros(nx+0,ny+0,nz+0);
 dTdxm  =  myzeros(nx+0,ny+0,nz+0);
-Told  =  myzeros(nx+0,ny+0,nz+0);
-T1t  =  myzeros(nx+0,ny+0,nz+0);
+Told   =  myzeros(nx+0,ny+0,nz+0);
 
 time = 0
 
@@ -194,115 +196,113 @@ for it=1:50
 
     time += dt
 
-    # T = Tc_ex[2:end-1,2:end-1,2:end-1]
-    # Told = T;
-    # for io=1:order
-    #
-    #     # Weno 5
-    #     Tc_exxx[4:end-3,4:end-3,4:end-3] = T;
-    #     @. Tc_exxx[3    ,4:end-3,4:end-3] =  T[1  ,:,:]; @. Tc_exxx[2    ,4:end-3,4:end-3] =  T[1  ,:,:];; @. Tc_exxx[1    ,4:end-3,4:end-3] =  T[  1,:,:];
-    #     @. Tc_exxx[end  ,4:end-3,4:end-3] =  T[end,:,:]; @. Tc_exxx[end-1,4:end-3,4:end-3] =  T[end,:,:];; @. Tc_exxx[end-2,4:end-3,4:end-3] =  T[end,:,:];
-    #
-    #
-    #     Tc_exxx[4:end-3,4:end-3,4:end-3]
-    #
-    #         @. v1    = 1/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
-    #         @. v2    = 1/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
-    #         @. v3    = 1/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
-    #         @. v4    = 1/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
-    #         @. v5    = 1/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
-    #         @. p1    = v1/3 - 7/6*v2 + 11/6*v3;
-    #         @. p2    =-v2/6 + 5/6*v3 + v4/3;
-    #         @. p3    = v3/3 + 5/6*v4 - v5/6;
-    #         CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz)
-    #         @. s1    = 13/12*(v1-2*v2+v3)^2 + 1/4*(v1-4*v2+3*v3)^2;
-    #         @. s2    = 13/12*(v2-2*v3+v4)^2 + 1/4*(v2-v4)^2;
-    #         @. s3    = 13/12*(v3-2*v4+v5)^2 + 1/4*(3*v3-4*v4+v5)^2;
-    #         @. a1    = 0.1/(s1+e)^2;
-    #         @. a2    = 0.6/(s2+e)^2;
-    #         @. a3    = 0.3/(s3+e)^2;
-    #         @. w1    = a1/(a1+a2+a3);
-    #         @. w2    = a2/(a1+a2+a3);
-    #         @. w3    = a3/(a1+a2+a3);
-    #         @. dTdxm = w1*p1 + w2*p2 + w3*p3; # minus x
-    #         #
-    #         # v1    = 1/dx*(Tc_exxx(inxi+3,inyi)-Tc_exxx(inxi+2,inyi));
-    #         # v2    = 1/dx*(Tc_exxx(inxi+2,inyi)-Tc_exxx(inxi+1,inyi));
-    #         # v3    = 1/dx*(Tc_exxx(inxi+1,inyi)-Tc_exxx(inxi  ,inyi));
-    #         # v4    = 1/dx*(Tc_exxx(inxi  ,inyi)-Tc_exxx(inxi-1,inyi));
-    #         # v5    = 1/dx*(Tc_exxx(inxi-1,inyi)-Tc_exxx(inxi-2,inyi));
-    #         # p1    = v1/3 - 7/6*v2 + 11/6*v3;
-    #         # p2    =-v2/6 + 5/6*v3 + v4/3;
-    #         # p3    = v3/3 + 5/6*v4 - v5/6;
-    #         # e     = 1e-99 + 1e-6*max(max(max(max(v1.^2,v2.^2),v3.^2),v4.^2),v5.^2);
-    #         # s1    = 13/12*(v1-2*v2+v3).^2 + 1/4*(v1-4*v2+3*v3).^2;
-    #         # s2    = 13/12*(v2-2*v3+v4).^2 + 1/4*(v2-v4).^2;
-    #         # s3    = 13/12*(v3-2*v4+v5).^2 + 1/4*(3*v3-4*v4+v5).^2;
-    #         # a1    = 0.1./(s1+e).^2;
-    #         # a2    = 0.6./(s2+e).^2;
-    #         # a3    = 0.3./(s3+e).^2;
-    #         # w1    = a1./(a1+a2+a3);
-    #         # w2    = a2./(a1+a2+a3);
-    #         # w3    = a3./(a1+a2+a3);
-    #         # dTdxp = w1.*p1 + w2.*p2 + w3.*p3; # plus x
-    #
-    #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vxp*dTdxm + Vxm*dTdxp);
-    # end
-    # @. Tc_ex[2:end-1,2:end-1,2:end-1] = (1.0/order)*Tc_ex[2:end-1,2:end-1,2:end-1] + (1.0-1.0/order)*Told;
+    if Upwind == 0
 
-    @. Told .= Tc_ex[2:end-1,2:end-1,2:end-1];
-    @. T1t  .= Tc_ex[2:end-1,2:end-1,2:end-1]
+    @. Told = Tc;
     for io=1:order
-        @. Tc_ex[2:end-1,2:end-1,2:end-1] = T1t
-        @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
-        @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-        @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-        @. dTdxp = 1.0/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
-        @. dTdxm = 1.0/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
-        @. T1t = T1t - dt*(Vxp*dTdxm + Vxm*dTdxp);
+
+        # Weno 5
+        @. Tc_exxx[4:end-3,4:end-3,4:end-3] = Tc;
+        @. Tc_exxx[3    ,4:end-3,4:end-3] =  Tc[1  ,:,:]; @. Tc_exxx[2    ,4:end-3,4:end-3] =  Tc[1  ,:,:];; @. Tc_exxx[1    ,4:end-3,4:end-3] =  Tc[  1,:,:];
+        @. Tc_exxx[end  ,4:end-3,4:end-3] =  Tc[end,:,:]; @. Tc_exxx[end-1,4:end-3,4:end-3] =  Tc[end,:,:];; @. Tc_exxx[end-2,4:end-3,4:end-3] =  Tc[end,:,:];
+
+            @. v1    = 1.0/dx*(Tc_exxx[2:end-5,4:end-3,4:end-3]-Tc_exxx[1:end-6,4:end-3,4:end-3]);
+            @. v2    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
+            @. v3    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
+            @. v4    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
+            @. v5    = 1.0/dx*(Tc_exxx[7:end-0,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
+            # @kernel cublocks cuthreads ComputeCoeffs(p1, p2, p3, v1, v2, v3, v4, v5, nx, ny, nz); @devicesync();
+            # @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
+            # @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
+            # @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
+            @kernel cublocks cuthreads CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz);               @devicesync();
+            @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
+            @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
+            @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
+            @. w1    = 0.1/(w1+e)^2.0;
+            @. w2    = 0.6/(w2+e)^2.0;
+            @. w3    = 0.3/(w3+e)^2.0;
+            @. e     = (w1+w2+w3)
+            @. w1    = w1/e;
+            @. w2    = w2/e;
+            @. w3    = w3/e;
+            @. dTdxm = w1*p1 + w2*p2 + w3*p3; # minus x
+            #
+            # @. v1    = 1.0/dx*(Tc_exxx[7:end+0,4:end-3,4:end-3]-Tc_exxx[6:end-1,4:end-3,4:end-3]);
+            # @. v2    = 1.0/dx*(Tc_exxx[6:end-1,4:end-3,4:end-3]-Tc_exxx[5:end-2,4:end-3,4:end-3]);
+            # @. v3    = 1.0/dx*(Tc_exxx[5:end-2,4:end-3,4:end-3]-Tc_exxx[4:end-3,4:end-3,4:end-3]);
+            # @. v4    = 1.0/dx*(Tc_exxx[4:end-3,4:end-3,4:end-3]-Tc_exxx[3:end-4,4:end-3,4:end-3]);
+            # @. v5    = 1.0/dx*(Tc_exxx[3:end-4,4:end-3,4:end-3]-Tc_exxx[2:end-5,4:end-3,4:end-3]);
+            # @. p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3;
+            # @. p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0;
+            # @. p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0;
+            # CrazyMax(e, v1, v2, v3, v4, v5, nx, ny, nz)
+            # @. w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
+            # @. w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
+            # @. w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
+            # @. w1    = 0.1/(w1+e)^2.0;
+            # @. w2    = 0.6/(w2+e)^2.0;
+            # @. w3    = 0.3/(w3+e)^2.0;
+            # @. e     = (w1+w2+w3)
+            # @. w1    = w1/e;
+            # @. w2    = w2/e;
+            # @. w3    = w3/e;
+            # @. dTdxp = w1*p1 + w2*p2 + w3*p3; # minus x
+
+        @. Tc = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
     end
-    @. Tc_ex[2:end-1,2:end-1,2:end-1] = (1.0/order)*T1t + (1.0-(1.0/order))*Told;
+    @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
 
-    # Told = Tc_ex[2:end-1,2:end-1,2:end-1];
-    # for io=1:order
-    #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
-    #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-    #     @. dTdxp = 1/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
-    #     @. dTdxm = 1/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
-    #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vxp*dTdxm + Vxm*dTdxp);
-    # end
-    # @. Tc_ex[2:end-1,2:end-1,2:end-1] = (1.0/order)*Tc_ex[2:end-1,2:end-1,2:end-1] + (1.0-1.0/order)*Told;
+    end
 
-    # Told = Tc_ex[2:end-1,2:end-1,2:end-1];
-    # for io=1:order
-    #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
-    #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-    #     @. dTdxp = 1/dy*(Tc_ex[2:end-1,3:end-0,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
-    #     @. dTdxm = 1/dy*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,1:end-2,2:end-1])
-    #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vyp*dTdxm + Vym*dTdxp);
-    # end
-    # @. T = (1/order)*T + (1-1/order)*Told;
-    #
-    # Told = Tc_ex[2:end-1,2:end-1,2:end-1];
-    # for io=1:order
-    #     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
-    #     @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
-    #     @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-    #     @. dTdxp = 1/dz*(Tc_ex[2:end-1,2:end-1,3:end-0] - Tc_ex[2:end-1,2:end-1,2:end-1])
-    #     @. dTdxm = 1/dz*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,1:end-2])
-    #     @. Tc_ex[2:end-1,2:end-1,2:end-1] = Tc_ex[2:end-1,2:end-1,2:end-1] - dt*(Vzp*dTdxm + Vzm*dTdxp);
-    # end
-    # @. Tc_ex[2:end-1,2:end-1,2:end-1] = (1/order)*Tc_ex[2:end-1,2:end-1,2:end-1] + (1-1/order)*Told;
+    if Upwind == 1
+    # # Function call - super slow
+    # Upwind(Tc,Told,Tc_ex,dTdxp,dTdxm,Vxp,Vxm,Vyp,Vym,Vzp,Vzm,dx,dy,dz,dt,order)
+
+    # # Without function call - very slow
+    @. Told = Tc;
+      for io=1:order
+          @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
+          @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
+          @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+          @. dTdxp = 1.0/dx*(Tc_ex[3:end-0,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
+          @. dTdxm = 1.0/dx*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[1:end-2,2:end-1,2:end-1])
+          @. Tc    = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
+      end
+      @. Tc = (1.0/order)*Tc + (1.0-(1.0/order))*Told;
+
+      @. Told = Tc
+      for io=1:order
+          @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
+          @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
+          @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+          @. dTdxp = 1.0/dy*(Tc_ex[2:end-1,3:end-0,2:end-1] - Tc_ex[2:end-1,2:end-1,2:end-1])
+          @. dTdxm = 1.0/dy*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,1:end-2,2:end-1])
+          @. Tc    = Tc - dt*(Vyp*dTdxm + Vym*dTdxp);
+      end
+      @. Tc = (1.0/order)*Tc + (1.0-(1.0/order))*Told;
+
+      @. Told = Tc;
+      for io=1:order
+          @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
+          @. Tc_ex[:,1,:] =          Tc_ex[:,2,:]; @. Tc_ex[:,end,:] =          Tc_ex[:,end-1,:];
+          @. Tc_ex[:,:,1] =          Tc_ex[:,:,2]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
+          @. dTdxp = 1.0/dz*(Tc_ex[2:end-1,2:end-1,3:end-0] - Tc_ex[2:end-1,2:end-1,2:end-1])
+          @. dTdxm = 1.0/dz*(Tc_ex[2:end-1,2:end-1,2:end-1] - Tc_ex[2:end-1,2:end-1,1:end-2])
+          @. Tc    = Tc - dt*(Vzp*dTdxm + Vzm*dTdxp);
+      end
+      @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
+
+  end
 
 end
 
 display(maximum_g(Tc_ex[2:end-1,2:end-1,2:end-1]))
 display(xC + time*1.0)
+display(yC + time*1.0)
 
 if (Vizu == 1)
-    X = Tc_ex[2:end-1,2:end-1,2:end-1]
+    X = Tc
     display( heatmap(xc, yc, transpose(X[:,:,Int(ceil(nz/2))]),c=:viridis,aspect_ratio=1) );
     # fx = VxC[:,:,Int(ceil(nz/2))]
     # fy = VyC[:,:,Int(ceil(nz/2))]
@@ -315,7 +315,7 @@ if (Vizu == 1)
     # quiver(x,y,quiver=(fx,fy))
     # u, v = rand(10),rand(10);
     # display( quiver(rand(10), gradient=(u,v)) )
-    @printf("Imaged sliced at z index %d over nx = %d, ny = %d, nz = %d\n", Int(ceil(nz/2)), nx, ny, nz)
+    @printf("Image sliced at z index %d over nx = %d, ny = %d, nz = %d\n", Int(ceil(nz/2)), nx, ny, nz)
     # display( heatmap(transpose(T_v[:,Int(ceil(ny_v/2)),:]),c=:viridis,aspect_ratio=1) );
 end
 

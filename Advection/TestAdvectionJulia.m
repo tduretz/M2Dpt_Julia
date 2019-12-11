@@ -68,7 +68,7 @@ for it=1:1
         else
             [phxm1,phxp1,c,d] = weno5(phi1t, dx, dy , 1, 0, 1);
         end
-        phi1t = phi1t - dimsplit*dt*(vxp1.*phxm1 + 0*vxm1.*phxp1);
+        phi1t = phi1t - dimsplit*dt*(vxp1.*phxm1 + vxm1.*phxp1);
     end
     phi1t = (1/order)*phi1t + (1-1/order)*phi1o;
     phi1o = phi1t;
