@@ -1,4 +1,3 @@
-vectorized       = 0
 Upwind           = 0         # if 0, then WENO-5
 nt               = 50
 const USE_GPU    = false
@@ -80,40 +79,129 @@ end
 
 @views function Gradients_minus_x_Weno5(v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, Fc_exxx::DatArray_k, dx::Float64, dy::Float64, dz::Float64, nx::Integer, ny::Integer, nz::Integer)
 
-    if vectorized == 1
-        # Vectorized style - slow but faster than @threadids_or_loop
-        @printf("vectorized evaluation of WENO-5 gradients\n")
-        @. v1    = 1.0/dx*(Fc_exxx[2:end-5,4:end-3,4:end-3]-Fc_exxx[1:end-6,4:end-3,4:end-3]);
-        @. v2    = 1.0/dx*(Fc_exxx[3:end-4,4:end-3,4:end-3]-Fc_exxx[2:end-5,4:end-3,4:end-3]);
-        @. v3    = 1.0/dx*(Fc_exxx[4:end-3,4:end-3,4:end-3]-Fc_exxx[3:end-4,4:end-3,4:end-3]);
-        @. v4    = 1.0/dx*(Fc_exxx[5:end-2,4:end-3,4:end-3]-Fc_exxx[4:end-3,4:end-3,4:end-3]);
-        @. v5    = 1.0/dx*(Fc_exxx[6:end-1,4:end-3,4:end-3]-Fc_exxx[5:end-2,4:end-3,4:end-3]);
-    else
-        @printf("threadids_or_loop evaluation of WENO-5 gradients\n")
-        @threadids_or_loop (nx+6,ny+6,nz+6) begin
-            ixiii = ix + 3
-            iyiii = iy + 3
-            iziii = iz + 3
-            if @participate_a(v1) @all(v1) = 1.0/dx*( @in_xxx_xm2(Fc_exxx) -  @in_xxx_xm3(Fc_exxx) ); end
-            if @participate_a(v2) @all(v2) = 1.0/dx*( @in_xxx_xm1(Fc_exxx) -  @in_xxx_xm2(Fc_exxx) ); end
-            if @participate_a(v3) @all(v3) = 1.0/dx*(     @in_xxx(Fc_exxx) -  @in_xxx_xm1(Fc_exxx) ); end
-            if @participate_a(v4) @all(v4) = 1.0/dx*( @in_xxx_xp1(Fc_exxx) -      @in_xxx(Fc_exxx) ); end
-            if @participate_a(v5) @all(v5) = 1.0/dx*( @in_xxx_xp2(Fc_exxx) -  @in_xxx_xp1(Fc_exxx) ); end
+    @threadids_or_loop (nx+6,ny+6,nz+6) begin
+        ixiii = ix + 3
+        iyiii = iy + 3
+        iziii = iz + 3
+        if @participate_a(v1) @all(v1) = 1.0/dx*( @in_xxx_xm2(Fc_exxx) -  @in_xxx_xm3(Fc_exxx) ); end
+        if @participate_a(v2) @all(v2) = 1.0/dx*( @in_xxx_xm1(Fc_exxx) -  @in_xxx_xm2(Fc_exxx) ); end
+        if @participate_a(v3) @all(v3) = 1.0/dx*(     @in_xxx(Fc_exxx) -  @in_xxx_xm1(Fc_exxx) ); end
+        if @participate_a(v4) @all(v4) = 1.0/dx*( @in_xxx_xp1(Fc_exxx) -      @in_xxx(Fc_exxx) ); end
+        if @participate_a(v5) @all(v5) = 1.0/dx*( @in_xxx_xp2(Fc_exxx) -  @in_xxx_xp1(Fc_exxx) ); end
+end
+return nothing
+end
+
+@views function Gradients_plus_x_Weno5(v1::DatArray_k, v2::DatArray_k, v3::DatArray_k, v4::DatArray_k, v5::DatArray_k, Fc_exxx::DatArray_k, dx::Float64, dy::Float64, dz::Float64, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+6,ny+6,nz+6) begin
+        ixiii = ix + 3
+        iyiii = iy + 3
+        iziii = iz + 3
+        if @participate_a(v1) @all(v1) = 1.0/dx*( @in_xxx_xp3(Fc_exxx) -  @in_xxx_xp2(Fc_exxx) ); end
+        if @participate_a(v2) @all(v2) = 1.0/dx*( @in_xxx_xp2(Fc_exxx) -  @in_xxx_xp1(Fc_exxx) ); end
+        if @participate_a(v3) @all(v3) = 1.0/dx*( @in_xxx_xp1(Fc_exxx) -      @in_xxx(Fc_exxx) ); end
+        if @participate_a(v4) @all(v4) = 1.0/dx*(     @in_xxx(Fc_exxx) -  @in_xxx_xm1(Fc_exxx) ); end
+        if @participate_a(v5) @all(v5) = 1.0/dx*( @in_xxx_xm1(Fc_exxx) -  @in_xxx_xm2(Fc_exxx) ); end
+end
+return nothing
+end
+
+@views function  Boundaries_x_Weno5( Fc_exxx::DatArray_k, Fc::DatArray_k, type_W::Integer, val_W::Float64, type_E::Integer, val_E::Float64, nx::Integer, ny::Integer, nz::Integer )
+
+    @threadids_or_loop (nx+6,ny+6,nz+6) begin
+        ixiii = ix + 3
+        iyiii = iy + 3
+        iziii = iz + 3
+        if @participate_ixxx(Fc_exxx) @in_xxx(Fc_exxx) = @all(Fc); end
+        if (type_W ==0 ) # Neumann
+            if ( ix==1 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,iz]; end
+            if ( ix==2 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,iz]; end
+            if ( ix==3 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,iz]; end
         end
+
+        if (type_W ==1 ) # Dirichlet
+            if ( ix==1 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_W - Fc[1,iy,iz]; end
+            if ( ix==2 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_W - Fc[2,iy,iz]; end
+            if ( ix==3 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_W - Fc[3,iy,iz]; end
+        end
+
+        if (type_W ==2 ) # Periodic
+            if ( ix==1 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[nx-2,iy,iz]; end
+            if ( ix==2 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[nx-1,iy,iz]; end
+            if ( ix==3 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[nx-0,iy,iz]; end
+        end
+
+        if (type_E ==0 ) # Neumann
+            if ( ix==nx+6-0 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[nx,iy,iz]; end
+            if ( ix==nx+6-1 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[nx,iy,iz]; end
+            if ( ix==nx+6-2 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[nx,iy,iz]; end
+        end
+
+        if (type_E ==1 ) # Dirichlet
+            if ( ix==nx+6-0 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_E - Fc[nx-2,iy,iz]; end
+            if ( ix==nx+6-1 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_E - Fc[nx-1,iy,iz]; end
+            if ( ix==nx+6-2 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_E - Fc[nx-0,iy,iz]; end
+        end
+
+        if (type_E ==2 ) # Periodic
+            if ( ix==nx+6-0 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[3,iy,iz]; end
+            if ( ix==nx+6-1 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[2,iy,iz]; end
+            if ( ix==nx+6-2 && iy>3 && iy<nx-2 && iz>3 && iz<nx-2 ) Fc_exxx[ix,iy,iz] = Fc[1,iy,iz]; end
+        end
+
     end
 return nothing
 end
+
+
+@views function  Advect(Fc::DatArray_k, Vxp::DatArray_k, dTdxm::DatArray_k, Vxm::DatArray_k, dTdxp::DatArray_k, dt::Float64, nx::Integer, ny::Integer, nz::Integer )
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        if @participate_a(Fc) @all(Fc) = @all(Fc) - dt*(@all(Vxp)*@all(dTdxm) + @all(Vxm)*@all(dTdxp)); end
+    end
+return nothing
+end
+
+@views function  TimeAveraging(Fc::DatArray_k, Fold::DatArray_k, order::Float64, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        if @participate_a(Fc) @all(Fc) = (1.0/order)*@all(Fc) + (1.0-1.0/order)*@all(Fold); end
+    end
+return nothing
+end
+
+@views function  ArrayEqualArray(F1::DatArray_k, F2::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        if @participate_a(F1) @all(F1) = @all(F2); end
+    end
+return nothing
+end
+
 
 ############################################################
 
 @views function MainWeno()
 # General
 Vizu   = 1
-order  = 2;
+order  = 2.0;
+# # Boundaries
+# BC_type_W = 0
+# BC_val_W  = 0.0
+# BC_type_E = 0
+# BC_val_E  = 0.0
+
+# Boundaries
+BC_type_W = 2
+BC_val_W  = 0.0
+BC_type_E = 2
+BC_val_E  = 0.0
+
 # Domain
 xmin     = -0.0;  xmax    =    1; Lx = xmax - xmin;
 ymin     = -0.0;  ymax    =    1; Ly = ymax - ymin;
-zmin     = -0.00; zmax    =    1; Lz = zmax - zmin;
+zmin     = -0.0;  zmax    =    1; Lz = zmax - zmin;
 # Numerics
 nout     = 100;
 nx       = 4*32;
@@ -140,16 +228,16 @@ zv  = LinRange(xmin, zmax, nz+1)
 (xv2,yv2,zv2)    = ([x for x=xv,y=yv,z=zv], [y for x=xv,y=yv,z=zv], [z for x=xv,y=yv,z=zv]);
 @printf("Grid was set up!\n")
 # Initial conditions
-Vx       =   myones(nx+1,ny+0,nz+0);
+Vx       = 1*myones(nx+1,ny+0,nz+0);
 Vy       =  myzeros(nx+0,ny+1,nz+0);
 Vz       =  myzeros(nx+0,ny+0,nz+1);
 Tc       =  myzeros(nx+0,ny+0,nz+0);
-xC       = 0.1
+xC       = 0.9
 yC       = 0.5*(ymin+ymax)
 zC       = 0.5*(zmin+zmax)
 @. Tc    = exp(-(xc2-xC)^2/ 0.001 - (yc2-yC)^2/ 0.001 - (zc2-zC)^2/ 0.001)
 # Compute Courant criteria
-dt = 0.25*min(dx,dy,dz) / max( maximum_g(Vx), maximum_g(Vy), maximum_g(Vz))
+dt = 0.25*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
 # Upwind velocities
 Vxm     =  myzeros(nx+0,ny+0,nz+0);
 Vxp     =  myzeros(nx+0,ny+0,nz+0);
@@ -178,17 +266,16 @@ for it=1:nt
     time += dt
 
     if Upwind == 0 # --- WENO-5
-        @. Told = Tc;
+        @kernel cublocks cuthreads ArrayEqualArray(Told, Tc, nx, ny, nz);                                                     @devicesync();
         for io=1:order
-            # Weno 5
-            @. Tc_exxx[4:end-3,4:end-3,4:end-3] = Tc;
-            @. Tc_exxx[3      ,4:end-3,4:end-3] = Tc[1  ,:,:]; @. Tc_exxx[2    ,4:end-3,4:end-3] =  Tc[1  ,:,:];; @. Tc_exxx[1    ,4:end-3,4:end-3] =  Tc[  1,:,:];
-            @. Tc_exxx[end    ,4:end-3,4:end-3] = Tc[end,:,:]; @. Tc_exxx[end-1,4:end-3,4:end-3] =  Tc[end,:,:];; @. Tc_exxx[end-2,4:end-3,4:end-3] =  Tc[end,:,:];
-            @kernel cublocks cuthreads Gradients_minus_x_Weno5(v1, v2, v3, v4, v5, Tc_exxx, dx, dy, dz, nx, ny, nz); @devicesync();
-            @kernel cublocks cuthreads dFdx_Weno5(dTdxm, v1, v2, v3, v4, v5, nx, ny, nz); @devicesync();
-            @. Tc = Tc - dt*(Vxp*dTdxm + Vxm*dTdxp);
+            @kernel cublocks cuthreads Boundaries_x_Weno5(Tc_exxx, Tc, BC_type_W, BC_val_W, BC_type_E, BC_val_E, nx, ny, nz); @devicesync();
+            @kernel cublocks cuthreads Gradients_minus_x_Weno5(v1, v2, v3, v4, v5, Tc_exxx, dx, dy, dz, nx, ny, nz);          @devicesync();
+            @kernel cublocks cuthreads dFdx_Weno5(dTdxm, v1, v2, v3, v4, v5, nx, ny, nz);                                     @devicesync();
+            @kernel cublocks cuthreads Gradients_plus_x_Weno5(v1, v2, v3, v4, v5, Tc_exxx, dx, dy, dz, nx, ny, nz);           @devicesync();
+            @kernel cublocks cuthreads dFdx_Weno5(dTdxp, v1, v2, v3, v4, v5, nx, ny, nz);                                     @devicesync();
+            @kernel cublocks cuthreads Advect(Tc, Vxp, dTdxm, Vxm, dTdxp, dt, nx, ny, nz);                                    @devicesync();
         end
-        @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
+        @kernel cublocks cuthreads TimeAveraging(Tc, Told, order, nx, ny, nz);                                                @devicesync();
     end
 
     if Upwind == 1
@@ -233,6 +320,7 @@ for it=1:nt
         # @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
     end
 end
+
 
 display(xC + time*1.0)
 display(yC + time*1.0)

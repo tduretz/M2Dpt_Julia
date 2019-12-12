@@ -131,26 +131,26 @@ end
 
 ##############################
 ## Macros from cuda_scientific
-args(A) = esc.((A,:ix,:iy,:iz,:ixi,:iyi,:izi))
-macro in_xxx(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_xm3(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_xm2(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_xm1(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_xp3(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_xp2(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_xp1(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_ym3(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_ym2(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_ym1(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_yp3(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_yp2(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_yp1(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_zm3(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_zm2(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_zm1(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_zp3(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_zp2(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
-macro in_xxx_zp1(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz  ] ) end
+args(A) = esc.((A,:ix,:iy,:iz,:ixi,:iyi,:izi,:ixiii,:iyiii,:iziii))
+macro in_xxx(A)      A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii   ] ) end
+macro in_xxx_xm3(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii-2,$iyiii  ,$iziii   ] ) end
+macro in_xxx_xm2(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii-2,$iyiii  ,$iziii   ] ) end
+macro in_xxx_xm1(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii-1,$iyiii  ,$iziii   ] ) end
+macro in_xxx_xp3(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii+3,$iyiii  ,$iziii   ] ) end
+macro in_xxx_xp2(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii+2,$iyiii  ,$iziii   ] ) end
+macro in_xxx_xp1(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii+1,$iyiii  ,$iziii   ] ) end
+macro in_xxx_ym3(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii-3,$iziii   ] ) end
+macro in_xxx_ym2(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii-2,$iziii   ] ) end
+macro in_xxx_ym1(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii-1,$iziii   ] ) end
+macro in_xxx_yp3(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii+3,$iziii   ] ) end
+macro in_xxx_yp2(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii+2,$iziii   ] ) end
+macro in_xxx_yp1(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii+1,$iziii   ] ) end
+macro in_xxx_zm3(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii-3 ] ) end
+macro in_xxx_zm2(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii-2 ] ) end
+macro in_xxx_zm1(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii-1 ] ) end
+macro in_xxx_zp3(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii+3 ] ) end
+macro in_xxx_zp2(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii+2 ] ) end
+macro in_xxx_zp1(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii+1 ] ) end
 macro   d_xa(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix+1,$iy  ,$iz  ] - $A[$ix  ,$iy  ,$iz  ] ) end
 macro   d_ya(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy+1,$iz  ] - $A[$ix  ,$iy  ,$iz  ] ) end
 macro   d_za(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix  ,$iy  ,$iz+1] - $A[$ix  ,$iy  ,$iz  ] ) end
@@ -226,6 +226,8 @@ macro participate_i(A)   A,ix,iy,iz,ixi,iyi,izi=args(A);  :($ix<=size($A,1)-2 &&
 macro participate_ix(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :($ix<=size($A,1)-2 && $iy<=size($A,2)   && $iz<=size($A,3)  ) end
 macro participate_iy(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :($ix<=size($A,1)   && $iy<=size($A,2)-2 && $iz<=size($A,3)  ) end
 macro participate_iz(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :($ix<=size($A,1)   && $iy<=size($A,2)   && $iz<=size($A,3)-2) end
+macro participate_ixxx(A)   A,ix,iy,iz,ixi,iyi,izi=args(A);  :($ix<=size($A,1)-6 && $iy<=size($A,2)-6 && $iz<=size($A,3)-6) end
+
 
 
 function Centroid2VerticesOnCPU!( fv, fc )
