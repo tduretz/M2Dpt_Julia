@@ -268,37 +268,37 @@ end
         iyiii = iy + 3
         iziii = iz + 3
         if @participate_ixxx(Fc_exxx) @in_xxx(Fc_exxx) = @all(Fc); end
-        if (type_S ==0 ) # Neumann
+        if (type_B ==0 ) # Neumann
             if ( iz==1 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,iz]; end
             if ( iz==2 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,iz]; end
             if ( iz==3 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,iz]; end
         end
 
-        if (type_S ==1 ) # Dirichlet
+        if (type_B ==1 ) # Dirichlet
             if ( iz==1 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_B - Fc[ix,iz,1]; end
             if ( iz==2 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_B - Fc[ix,iz,2]; end
             if ( iz==3 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_B - Fc[ix,iz,3]; end
         end
 
-        if (type_S ==2 ) # Periodic
+        if (type_B ==2 ) # Periodic
             if ( iz==1 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,ny-2]; end
             if ( iz==2 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,ny-1]; end
             if ( iz==3 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,ny-0]; end
         end
 
-        if (type_N ==0 ) # Neumann
+        if (type_F ==0 ) # Neumann
             if ( iz==ny+6-0 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[nx,iy,iz]; end
             if ( iz==ny+6-1 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[nx,iy,iz]; end
             if ( iz==ny+6-2 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[nx,iy,iz]; end
         end
 
-        if (type_N ==1 ) # Dirichlet
+        if (type_F ==1 ) # Dirichlet
             if ( iz==ny+6-0 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_F - Fc[ix,iy,ny-2]; end
             if ( iz==ny+6-1 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_F - Fc[ix,iy,ny-1]; end
             if ( iz==ny+6-2 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = 2*BC_val_F - Fc[ix,iy,ny-0]; end
         end
 
-        if (type_N ==2 ) # Periodic
+        if (type_F ==2 ) # Periodic
             if ( iz==ny+6-0 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,3]; end
             if ( iz==ny+6-1 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,2]; end
             if ( iz==ny+6-2 && ix>3 && ix<nx-2 && iy>3 && iy<nz-2 ) Fc_exxx[ix,iy,iz] = Fc[ix,iy,1]; end
