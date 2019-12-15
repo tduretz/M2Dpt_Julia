@@ -1,5 +1,6 @@
 Upwind           = 0         # if 0, then WENO-5
 nt               = 50
+Vizu             = 0
 const USE_GPU    = false
 const USE_MPI    = false
 const DAT        = Float64   # Precision (Float64 or Float32)
@@ -337,7 +338,6 @@ end
 
 @views function MainWeno()
 # General
-Vizu   = 1
 order  = 2.0;
 # # Boundaries
 # BC_type_W = 0
@@ -401,7 +401,9 @@ Tc       =  myzeros(nx+0,ny+0,nz+0);
 xC       = 0.1
 yC       = 0.1
 zC       = 0.5*(zmin+zmax)
+Tc      = Array(Tc)
 @. Tc    = exp(-(xc2-xC)^2/ 0.001 - (yc2-yC)^2/ 0.001 - (zc2-zC)^2/ 0.001)
+Tc      = DatArray(Tc)
 # Compute Courant criteria
 dt = 0.25*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
 # Upwind velocities
