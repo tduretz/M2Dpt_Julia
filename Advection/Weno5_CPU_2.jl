@@ -1,6 +1,6 @@
 Upwind           = 0         # if 0, then WENO-5
 nt               = 50
-Vizu             = 1
+Vizu             = 0
 Save             = 0
 const USE_GPU    = false
 const USE_MPI    = false
@@ -12,22 +12,22 @@ using Plots
 
 ############################################################
 
-# @views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-#
-#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-#         if ( Vx[ix+0,iy,iz] > 0.0 )
-#             if @participate_a(Vxp) Vxm[ix,iy,iz] = Vx[ix+0,iy,iz]; end
-#         else
-#             if @participate_a(Vxp) Vxm[ix,iy,iz] = 0.0; end
-#         end
-#         if ( Vx[ix+1,iy,iz] > 0.0 )
-#             if @participate_a(Vxp) Vxp[ix,iy,iz] = Vx[ix+1,iy,iz]; end
-#         else
-#             if @participate_a(Vxp) Vxp[ix,iy,iz] = 0.0; end
-#         end
-#     end
-#     return nothing
-# end
+@views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        if ( @West(Vx) > 0.0 )
+            if @participate_a(Vxm) @all(Vxm) = @West(Vx); end
+        else
+            if @participate_a(Vxm) @all(Vxm) = 0.0; end
+        end
+        if ( @East(Vx) > 0.0 )
+            if @participate_a(Vxp) @all(Vxp) = @East(Vx); end
+        else
+            if @participate_a(Vxp) @all(Vxp) = 0.0; end
+        end
+    end
+    return nothing
+end
 #
 # @views function VyPlusMinus(Vym::DatArray_k, Vyp::DatArray_k, Vy::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
 #
@@ -66,18 +66,18 @@ using Plots
 # PROBLEME #1
 # KERNEL PROBLEMATIQUE - COMMENT FAIRE LE ``IF'' PROPREMENT sur GPU?
 # LA VERSION AU DESSUS NE MARCHE PAS.
-@views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-
-    @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        if ( Vx[ix+0,iy,iz] < 0.0 ) Vxm[ix,iy,iz] = Vx[ix+0,iy,iz]
-        else                        Vxm[ix,iy,iz] = 0.0
-        end
-        if ( Vx[ix+1,iy,iz] > 0.0 ) Vxp[ix,iy,iz] = Vx[ix+1,iy,iz]
-        else                        Vxp[ix,iy,iz] = 0.0
-        end
-    end
-    return nothing
-end
+# @views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+#
+#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
+#         if ( Vx[ix+0,iy,iz] < 0.0 ) Vxm[ix,iy,iz] = Vx[ix+0,iy,iz]
+#         else                        Vxm[ix,iy,iz] = 0.0
+#         end
+#         if ( Vx[ix+1,iy,iz] > 0.0 ) Vxp[ix,iy,iz] = Vx[ix+1,iy,iz]
+#         else                        Vxp[ix,iy,iz] = 0.0
+#         end
+#     end
+#     return nothing
+# end
 
 @views function VyPlusMinus(Vym::DatArray_k, Vyp::DatArray_k, Vy::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
 
