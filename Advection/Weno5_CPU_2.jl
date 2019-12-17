@@ -1,6 +1,6 @@
 Upwind           = 0         # if 0, then WENO-5
 nt               = 50
-Vizu             = 0
+Vizu             = 1
 Save             = 0
 const USE_GPU    = false
 const USE_MPI    = false
@@ -15,57 +15,42 @@ using Plots
 @views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
 
     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        if ( @West(Vx) > 0.0 )
-            if @participate_a(Vxm) @all(Vxm) = @West(Vx); end
-        else
-            if @participate_a(Vxm) @all(Vxm) = 0.0; end
-        end
-        if ( @East(Vx) > 0.0 )
-            if @participate_a(Vxp) @all(Vxp) = @East(Vx); end
-        else
-            if @participate_a(Vxp) @all(Vxp) = 0.0; end
-        end
+        ixi = ix + 1
+        if ( @West(Vx) < 0.00  && @participate_a(Vxm) ) @all(Vxm) = @West(Vx); end
+        if ( @West(Vx) > 0.00  && @participate_a(Vxm) ) @all(Vxm) = 0.00;      end
+        if ( @East(Vx) > 0.00  && @participate_a(Vxp) ) @all(Vxp) = @East(Vx); end
+        if ( @West(Vx) < 0.00  && @participate_a(Vxp) ) @all(Vxp) = 0.00;      end
     end
     return nothing
 end
-#
-# @views function VyPlusMinus(Vym::DatArray_k, Vyp::DatArray_k, Vy::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-#
-#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-#         if ( Vy[ix,iy+0,iz] < 0.0 )
-#             if @participate_a(Vym) Vym[ix,iy,iz] = Vy[ix,iy+0,iz]; end
-#         else
-#             if @participate_a(Vym) Vym[ix,iy,iz] = 0.0; end
-#         end
-#         if ( Vy[ix,iy+1,iz] > 0.0 )
-#             if @participate_a(Vyp) Vyp[ix,iy,iz] = Vy[ix,iy+1,iz]; end
-#         else
-#             if @participate_a(Vyp) Vyp[ix,iy,iz] = 0.0; end
-#         end
-#     end
-#     return nothing
-# end
-#
-# @views function VzPlusMinus(Vzm::DatArray_k, Vzp::DatArray_k, Vz::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-#
-#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-#         if ( Vz[ix,iy,iz+0] < 0.0 )
-#             if @participate_a(Vzm) Vzm[ix,iy,iz] = Vz[ix,iy,iz+0]; end
-#         else
-#             if @participate_a(Vzm) Vzm[ix,iy,iz] = 0.0; end
-#         end
-#         if ( Vz[ix,iy,iz+1] > 0.0 )
-#             if @participate_a(Vzp) Vzp[ix,iy,iz] = Vz[ix,iy,iz+1]; end
-#         else
-#             if @participate_a(Vzp) Vzp[ix,iy,iz] = 0.0; end
-#         end
-#     end
-#     return nothing
-# end
 
-# PROBLEME #1
-# KERNEL PROBLEMATIQUE - COMMENT FAIRE LE ``IF'' PROPREMENT sur GPU?
-# LA VERSION AU DESSUS NE MARCHE PAS.
+@views function VyPlusMinus(Vym::DatArray_k, Vyp::DatArray_k, Vy::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        iyi = iy + 1
+        if ( @South(Vy) < 0.00  && @participate_a(Vym) ) @all(Vym) = @South(Vy); end
+        if ( @South(Vy) > 0.00  && @participate_a(Vym) ) @all(Vym) = 0.00;      end
+        if ( @North(Vy) > 0.00  && @participate_a(Vyp) ) @all(Vyp) = @North(Vy); end
+        if ( @North(Vy) < 0.00  && @participate_a(Vyp) ) @all(Vyp) = 0.00;      end
+    end
+    return nothing
+ end
+
+@views function VzPlusMinus(Vzm::DatArray_k, Vzp::DatArray_k, Vz::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+
+    @threadids_or_loop (nx+0,ny+0,nz+0) begin
+        izi = iz + 1
+        if ( @Back(Vz) < 0.00  && @participate_a(Vzm) ) @all(Vzm) = @Back(Vz); end
+        if ( @Back(Vz) > 0.00  && @participate_a(Vzm) ) @all(Vzm) = 0.00;      end
+        if ( @Front(Vz) > 0.00  && @participate_a(Vzp) ) @all(Vzp) = @Front(Vz); end
+        if ( @Front(Vz) < 0.00  && @participate_a(Vzp) ) @all(Vzp) = 0.00;      end
+    end
+    return nothing
+end
+
+# # PROBLEME #1
+# # KERNEL PROBLEMATIQUE - COMMENT FAIRE LE ``IF'' PROPREMENT sur GPU?
+# # LA VERSION AU DESSUS NE MARCHE PAS.
 # @views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
 #
 #     @threadids_or_loop (nx+0,ny+0,nz+0) begin
@@ -79,31 +64,31 @@ end
 #     return nothing
 # end
 
-@views function VyPlusMinus(Vym::DatArray_k, Vyp::DatArray_k, Vy::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+# @views function VyPlusMinus(Vym::DatArray_k, Vyp::DatArray_k, Vy::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+#
+#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
+#         if ( Vy[ix,iy+0,iz] < 0.0 ) Vym[ix,iy,iz] = Vy[ix,iy+0,iz]
+#         else                        Vym[ix,iy,iz] = 0.0
+#         end
+#         if ( Vy[ix,iy+1,iz] > 0.0 ) Vyp[ix,iy,iz] = Vy[ix,iy+1,iz]
+#         else                        Vyp[ix,iy,iz] = 0.0
+#         end
+#     end
+#     return nothing
+# end
 
-    @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        if ( Vy[ix,iy+0,iz] < 0.0 ) Vym[ix,iy,iz] = Vy[ix,iy+0,iz]
-        else                        Vym[ix,iy,iz] = 0.0
-        end
-        if ( Vy[ix,iy+1,iz] > 0.0 ) Vyp[ix,iy,iz] = Vy[ix,iy+1,iz]
-        else                        Vyp[ix,iy,iz] = 0.0
-        end
-    end
-    return nothing
-end
-
-@views function VzPlusMinus(Vzm::DatArray_k, Vzp::DatArray_k, Vz::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-
-    @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        if ( Vz[ix,iy,iz+0] < 0.0 ) Vzm[ix,iy,iz] = Vz[ix,iy,iz+0]
-        else                        Vzm[ix,iy,iz] = 0.0
-        end
-        if ( Vz[ix,iy,iz+1] > 0.0 ) Vzp[ix,iy,iz] = Vz[ix,iy,iz+1]
-        else                        Vzp[ix,iy,iz] = 0.0
-        end
-    end
-    return nothing
-end
+# @views function VzPlusMinus(Vzm::DatArray_k, Vzp::DatArray_k, Vz::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
+#
+#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
+#         if ( Vz[ix,iy,iz+0] < 0.0 ) Vzm[ix,iy,iz] = Vz[ix,iy,iz+0]
+#         else                        Vzm[ix,iy,iz] = 0.0
+#         end
+#         if ( Vz[ix,iy,iz+1] > 0.0 ) Vzp[ix,iy,iz] = Vz[ix,iy,iz+1]
+#         else                        Vzp[ix,iy,iz] = 0.0
+#         end
+#     end
+#     return nothing
+# end
 
 # PROBLEME #2
 # Comment gérer des scalaires sur GPU?
@@ -114,11 +99,11 @@ end
  @views function dFdx_Weno5(dFdxi::DatArray_k, V1::DatArray_k, V2::DatArray_k, V3::DatArray_k, V4::DatArray_k, V5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
 
     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        v1    = V1[ix,iy,iz]
-        v2    = V2[ix,iy,iz]
-        v3    = V3[ix,iy,iz]
-        v4    = V4[ix,iy,iz]
-        v5    = V5[ix,iy,iz]
+        if (@participate_a(V1))  v1 = @all(V1); end
+        if (@participate_a(V2))  v2 = @all(V2); end
+        if (@participate_a(V3))  v3 = @all(V3); end
+        if (@participate_a(V4))  v4 = @all(V4); end
+        if (@participate_a(V5))  v5 = @all(V5); end
         p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3
         p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0
         p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0
@@ -461,8 +446,8 @@ zv  = LinRange(xmin, zmax, nz+1)
 (xv2,yv2,zv2)    = ([x for x=xv,y=yv,z=zv], [y for x=xv,y=yv,z=zv], [z for x=xv,y=yv,z=zv]);
 @printf("Grid was set up!\n")
 # Initial conditions
-Vx       = 1*myones(nx+1,ny+0,nz+0);
-Vy       = 1*myones(nx+0,ny+1,nz+0);
+Vx       =  myones(nx+1,ny+0,nz+0);
+Vy       =  myones(nx+0,ny+1,nz+0);
 Vz       =  myzeros(nx+0,ny+0,nz+1);
 Tc       =  myzeros(nx+0,ny+0,nz+0);
 # x0       = 0.9

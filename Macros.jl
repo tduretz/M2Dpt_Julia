@@ -69,6 +69,12 @@ end
 @views in_xxx_zp2(A) =  A[4:end-3,4:end-3,6:end-1]
 @views in_xxx_zp3(A) =  A[4:end-3,4:end-3,7:end-0]
 
+@views West(A)      = A[1:end-1,1:end,1:end]
+@views East(A)      = A[2:end-0,1:end,1:end]
+@views South(A)     = A[1:end,1:end-1,1:end]
+@views North(A)     = A[1:end,2:end-0,1:end]
+@views Back(A)      = A[1:end,1:end,1:end-1]
+@views Front(A)     = A[1:end,1:end,2:end-0]
 
 @views all(A)      = A[1:end,1:end,1:end]
 @views inn(A)      = A[2:end-1,2:end-1,2:end-1]
@@ -132,6 +138,12 @@ end
 ##############################
 ## Macros from cuda_scientific
 args(A) = esc.((A,:ix,:iy,:iz,:ixi,:iyi,:izi,:ixiii,:iyiii,:iziii))
+macro    West(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix ,$iy ,$iz ] ) end
+macro    East(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ixi,$iy ,$iz ] ) end
+macro    South(A) A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix ,$iy ,$iz ] ) end
+macro    North(A) A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix ,$iyi,$iz ] ) end
+macro    Back(A)  A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix ,$iy ,$iz ] ) end
+macro    Front(A) A,ix,iy,iz,ixi,iyi,izi=args(A);  :( $A[$ix ,$iy ,$izi] ) end
 macro in_xxx(A)      A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii  ,$iyiii  ,$iziii   ] ) end
 macro in_xxx_xm3(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii-2,$iyiii  ,$iziii   ] ) end
 macro in_xxx_xm2(A)  A,ix,iy,iz,ixi,iyi,izi,ixiii,iyiii,iziii=args(A);  :( $A[$ixiii-2,$iyiii  ,$iziii   ] ) end
