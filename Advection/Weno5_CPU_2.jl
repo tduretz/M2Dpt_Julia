@@ -1,8 +1,8 @@
 Upwind           = 0         # if 0, then WENO-5
 nt               = 50
-Vizu             = 0
+Vizu             = 1
 Save             = 1
-const USE_GPU    = true
+const USE_GPU    = false
 const USE_MPI    = false
 const DAT        = Float64   # Precision (Float64 or Float32)
 include("../Macros.jl")
@@ -545,20 +545,14 @@ for it=0:nt
     # end
 
     if ( Save==1 && mod(it,nout)==0 )
-        Tc = Array(Tc)
-        # xc = Array(xc)
-        # yc = Array(yc)
-        # zc = Array(zc)
-        filename = @sprintf("Output%05d.h5", it)
-        rm(filename)
-        h5write(filename, "Tc", Tc)
-        # h5write(filename, "xc", xc)
-        # h5write(filename, "mesh", yc)
-        # h5write(filename, "mesh", zc)
-        Tc = DatArray(Tc)
-        # xc = DatArray(xc)
-        # yc = DatArray(yc)
-        # zc = DatArray(zc)
+        filename = @sprintf("./WenoOutput%05d.h5", it)
+        if isfile(filename)==1
+            rm(filename)
+        end
+        h5write(filename, "Tc", Array(Tc))
+        h5write(filename, "xc", Array(xc))
+        h5write(filename, "yc", Array(yc))
+        h5write(filename, "zc", Array(zc))
     end
 
 end
