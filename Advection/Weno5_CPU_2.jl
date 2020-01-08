@@ -546,18 +546,19 @@ for it=0:nt
 
     if ( Save==1 && mod(it,nout)==0 )
         Tc = Array(Tc)
-        # SaveArray("xce",xc,it);
-        # SaveArray("yc",yc,it);
-        # SaveArray("zc",zc,it);
-        # SaveArray("Tc",Tc,it);
-        filename = string("Output", it, ".h5")
-        h5open(filename, "w") do file
-            write(file, "Tc", Tc)  # alternatively, say "@write file A"
-            write(file, "xc", xc)
-            write(file, "yc", yc)
-            write(file, "zc", zc)
-        end
+        # xc = Array(xc)
+        # yc = Array(yc)
+        # zc = Array(zc)
+        filename = @sprintf("Output%05d.h5", it)
+        rm(filename)
+        h5write(filename, "Tc", Tc)
+        # h5write(filename, "xc", xc)
+        # h5write(filename, "mesh", yc)
+        # h5write(filename, "mesh", zc)
         Tc = DatArray(Tc)
+        # xc = DatArray(xc)
+        # yc = DatArray(yc)
+        # zc = DatArray(zc)
     end
 
 end
