@@ -1,6 +1,6 @@
 Upwind           = 0         # if 0, then WENO-5
 nt               = 50
-Vizu             = 1
+Vizu             = 0
 Save             = 1
 const USE_GPU    = false
 const USE_MPI    = false
@@ -10,7 +10,7 @@ include("../Macros.jl")
 using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=12' (used for loops with @threads macro).
 using Plots
 using HDF5
-
+using Statistics
 ############################################################
 
 @views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
@@ -461,7 +461,7 @@ time    = 0
 for it=0:nt
 
     time += dt
-    @printf("Time step; %04d\n", it)
+    @printf("Time step #%04d\n", it)
 
     if Upwind == 0 # --- WENO-5
 
@@ -501,6 +501,10 @@ for it=0:nt
         end
         @kernel cublocks cuthreads TimeAveraging(Tc, Told, order, nx, ny, nz);                                                @devicesync();
     end
+
+    # Check mean field
+    nT = mean_g(abs.(Tc[:]))/sqrt(nx*ny*nz);
+    @printf("Norm of Tc = %2.2e\n", nT)
 
     # if Upwind == 1
     #     # # Function call - super slow
@@ -557,9 +561,9 @@ for it=0:nt
 
 end
 
-
-display(x0 + time*1.0)
-display(y0 + time*1.0)
+# Expected location of Gaussian center
+# display(x0 + time*1.0)
+# display(y0 + time*1.0)
 
 if (Vizu == 1)
     X = Tc
