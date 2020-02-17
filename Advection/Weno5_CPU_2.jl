@@ -1,7 +1,7 @@
 Upwind           = 0         # if 0, then WENO-5
 nt               = 50
-Vizu             = 1
-Save             = 0
+Vizu             = 0
+Save             = 1
 const USE_GPU    = false
 const USE_MPI    = false
 const DAT        = Float64   # Precision (Float64 or Float32)
@@ -9,7 +9,8 @@ include("../Macros.jl")
 # include("./AdvectionSchemes.jl")
 using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=12' (used for loops with @threads macro).
 using Plots
-
+using HDF5
+using Statistics
 ############################################################
 
 @views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
@@ -40,86 +41,44 @@ end
 
     @threadids_or_loop (nx+0,ny+0,nz+0) begin
         izi = iz + 1
-        if ( @Back(Vz) < 0.00  && @participate_a(Vzm) ) @all(Vzm) = @Back(Vz); end
-        if ( @Back(Vz) > 0.00  && @participate_a(Vzm) ) @all(Vzm) = 0.00;      end
+        if ( @Back(Vz)  < 0.00  && @participate_a(Vzm) ) @all(Vzm) = @Back(Vz); end
+        if ( @Back(Vz)  > 0.00  && @participate_a(Vzm) ) @all(Vzm) = 0.00;      end
         if ( @Front(Vz) > 0.00  && @participate_a(Vzp) ) @all(Vzp) = @Front(Vz); end
         if ( @Front(Vz) < 0.00  && @participate_a(Vzp) ) @all(Vzp) = 0.00;      end
     end
     return nothing
 end
 
-# # PROBLEME #1
-# # KERNEL PROBLEMATIQUE - COMMENT FAIRE LE ``IF'' PROPREMENT sur GPU?
-# # LA VERSION AU DESSUS NE MARCHE PAS.
-# @views function VxPlusMinus(Vxm::DatArray_k, Vxp::DatArray_k, Vx::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-#
-#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-#         if ( Vx[ix+0,iy,iz] < 0.0 ) Vxm[ix,iy,iz] = Vx[ix+0,iy,iz]
-#         else                        Vxm[ix,iy,iz] = 0.0
-#         end
-#         if ( Vx[ix+1,iy,iz] > 0.0 ) Vxp[ix,iy,iz] = Vx[ix+1,iy,iz]
-#         else                        Vxp[ix,iy,iz] = 0.0
-#         end
-#     end
-#     return nothing
-# end
-
-# @views function VyPlusMinus(Vym::DatArray_k, Vyp::DatArray_k, Vy::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-#
-#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-#         if ( Vy[ix,iy+0,iz] < 0.0 ) Vym[ix,iy,iz] = Vy[ix,iy+0,iz]
-#         else                        Vym[ix,iy,iz] = 0.0
-#         end
-#         if ( Vy[ix,iy+1,iz] > 0.0 ) Vyp[ix,iy,iz] = Vy[ix,iy+1,iz]
-#         else                        Vyp[ix,iy,iz] = 0.0
-#         end
-#     end
-#     return nothing
-# end
-
-# @views function VzPlusMinus(Vzm::DatArray_k, Vzp::DatArray_k, Vz::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
-#
-#     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-#         if ( Vz[ix,iy,iz+0] < 0.0 ) Vzm[ix,iy,iz] = Vz[ix,iy,iz+0]
-#         else                        Vzm[ix,iy,iz] = 0.0
-#         end
-#         if ( Vz[ix,iy,iz+1] > 0.0 ) Vzp[ix,iy,iz] = Vz[ix,iy,iz+1]
-#         else                        Vzp[ix,iy,iz] = 0.0
-#         end
-#     end
-#     return nothing
-# end
-
-# PROBLEME #2
-# Comment gérer des scalaires sur GPU?
-# J'amerais que v1 à v5 soient des scalaires lus depuis les tableaux V1 à V5
-# Il seraient donc indépendants pour chaque worker
-# Du coup, les p1 à p3, e, w1 à w3, et w seraient aussi des scalaires.
-# Les seul tableaux à stocker seraient donc les V1 à V5 et le dFdxi.
  @views function dFdx_Weno5(dFdxi::DatArray_k, V1::DatArray_k, V2::DatArray_k, V3::DatArray_k, V4::DatArray_k, V5::DatArray_k, nx::Integer, ny::Integer, nz::Integer)
 
     @threadids_or_loop (nx+0,ny+0,nz+0) begin
-        if (@participate_a(V1))  v1 = @all(V1); end
-        if (@participate_a(V2))  v2 = @all(V2); end
-        if (@participate_a(V3))  v3 = @all(V3); end
-        if (@participate_a(V4))  v4 = @all(V4); end
-        if (@participate_a(V5))  v5 = @all(V5); end
+        # if (@participate_a(V1))  v1 = @all(V1); end
+        # if (@participate_a(V2))  v2 = @all(V2); end
+        # if (@participate_a(V3))  v3 = @all(V3); end
+        # if (@participate_a(V4))  v4 = @all(V4); end
+        # if (@participate_a(V5))  v5 = @all(V5); end
+        v1    = V1[ix,iy,iz]
+        v2    = V2[ix,iy,iz]
+        v3    = V3[ix,iy,iz]
+        v4    = V4[ix,iy,iz]
+        v5    = V5[ix,iy,iz]
         p1    = v1/3.0 - 7.0/6.0*v2 + 11.0/6.0*v3
         p2    =-v2/6.0 + 5.0/6.0*v3 + v4/3.0
         p3    = v3/3.0 + 5.0/6.0*v4 - v5/6.0
         maxV  = max(max(max(max(v1^2,v2^2), v3^2), v4^2), v5^2)
         e     = 10^(-99) + 1e-6*maxV
-        w1    = 13.0/12.0*(v1-2.0*v2+v3)^2.0 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2.0;
-        w2    = 13.0/12.0*(v2-2.0*v3+v4)^2.0 + 1.0/4.0*(v2-v4)^2.0;
-        w3    = 13.0/12.0*(v3-2.0*v4+v5)^2.0 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2.0;
-        w1    = 0.1/(w1+e)^2.0;
-        w2    = 0.6/(w2+e)^2.0;
-        w3    = 0.3/(w3+e)^2.0;
+        w1    = 13.0/12.0*(v1-2.0*v2+v3)^2 + 1.0/4.0*(v1-4.0*v2+3.0*v3)^2;
+        w2    = 13.0/12.0*(v2-2.0*v3+v4)^2 + 1.0/4.0*(v2-v4)^2;
+        w3    = 13.0/12.0*(v3-2.0*v4+v5)^2 + 1.0/4.0*(3.0*v3-4.0*v4+v5)^2;
+        w1    = 0.1/(w1+e)^2;
+        w2    = 0.6/(w2+e)^2;
+        w3    = 0.3/(w3+e)^2;
         w     = (w1+w2+w3)
         w1    = w1/w;
         w2    = w2/w;
         w3    = w3/w;
-        if @participate_a(dFdxi) @all(dFdxi)= w1*p1 + w2*p2 + w3*p3; end
+        dFdxi[ix,iy,iz] = w1*p1 + w2*p2 + w3*p3
+        # if @participate_a(dFdxi) @all(dFdxi)= w1*p1 + w2*p2 + w3*p3; end
     end
 return nothing
 end
@@ -421,7 +380,7 @@ xmin     = -0.0;  xmax    =    1; Lx = xmax - xmin;
 ymin     = -0.0;  ymax    =    1; Ly = ymax - ymin;
 zmin     = -0.0;  zmax    =    1; Lz = zmax - zmin;
 # Numerics
-nout     = 100;
+nout     = 10;
 nx       = 2*32;
 ny       = 2*32;
 nz       = 2*32;
@@ -499,10 +458,10 @@ dTdxm   =  myzeros(nx+0,ny+0,nz+0);
 Told    =  myzeros(nx+0,ny+0,nz+0);
 time    = 0
 # Time loop
-for it=1:nt
+for it=0:nt
 
     time += dt
-    @printf("Time step; %04d\n", it)
+    @printf("Time step #%04d\n", it)
 
     if Upwind == 0 # --- WENO-5
 
@@ -542,6 +501,10 @@ for it=1:nt
         end
         @kernel cublocks cuthreads TimeAveraging(Tc, Told, order, nx, ny, nz);                                                @devicesync();
     end
+
+    # Check mean field
+    nT = mean_g(abs.(Tc[:]))/sqrt(nx*ny*nz);
+    @printf("Norm of Tc = %2.2e\n", nT)
 
     # if Upwind == 1
     #     # # Function call - super slow
@@ -585,20 +548,22 @@ for it=1:nt
     #     # @. Tc = (1.0/order)*Tc + (1.0-1.0/order)*Told;
     # end
 
-    if (Save==1)
-        Tc = Array(Tc)
-        SaveArray("xce",xc,it);
-        SaveArray("yc",yc,it);
-        SaveArray("zc",zc,it);
-        SaveArray("Tc",Tc,it);
-        Tc = DatArray(Tc)
+    if ( Save==1 && mod(it,nout)==0 )
+        filename = @sprintf("./WenoOutput%05d.h5", it)
+        if isfile(filename)==1
+            rm(filename)
+        end
+        h5write(filename, "Tc", Array(Tc))
+        h5write(filename, "xc", Array(xc))
+        h5write(filename, "yc", Array(yc))
+        h5write(filename, "zc", Array(zc))
     end
 
 end
 
-
-display(x0 + time*1.0)
-display(y0 + time*1.0)
+# Expected location of Gaussian center
+# display(x0 + time*1.0)
+# display(y0 + time*1.0)
 
 if (Vizu == 1)
     X = Tc
