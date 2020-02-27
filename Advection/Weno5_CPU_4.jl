@@ -1,11 +1,12 @@
 Upwind           = 0         # if 0, then WENO-5
-nt               = 250
-Vizu             = 1
-Save             = 0
-const USE_GPU    = false
+nt               = 500
+fact             = 5;
+Vizu             = 0
+Save             = 1
+const USE_GPU    = true
 const USE_MPI    = false
 const DAT        = Float64   # Precision (Float64 or Float32)
-include("./Macros.jl")
+include("../Macros.jl")
 # include("./AdvectionSchemes.jl")
 using Base.Threads         # Before starting Julia do 'export JULIA_NUM_THREADS=12' (used for loops with @threads macro).
 using Plots
@@ -188,17 +189,17 @@ end
         iyiii = iy + 3
         iziii = iz + 3
         if @participate_ixxx(Fc_exxx) @in_xxx(Fc_exxx) = @all(Fc); end
-        # if (type_W ==0 ) # Neumann
-        #     if (ix==1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[1,iy-3,iz-3]; end
-        #     if (ix==2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[1,iy-3,iz-3]; end
-        #     if (ix==3 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[1,iy-3,iz-3]; end
-        # end
+        if (type_W ==0 ) # Neumann
+            if (ix==1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[3,iy-3,iz-3]; end
+            if (ix==2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[2,iy-3,iz-3]; end
+            if (ix==3 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[1,iy-3,iz-3]; end
+        end
 
-        # if (type_W ==1 ) # Dirichlet
-        #     if (ix==1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_W - Fc[1,iy-3,iz-3]; end
-        #     if (ix==2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_W - Fc[2,iy-3,iz-3]; end
-        #     if (ix==3 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_W - Fc[3,iy-3,iz-3]; end
-        # end
+        if (type_W ==1 ) # Dirichlet
+            if (ix==1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_W - Fc[3,iy-3,iz-3]; end
+            if (ix==2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_W - Fc[2,iy-3,iz-3]; end
+            if (ix==3 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_W - Fc[1,iy-3,iz-3]; end
+        end
 
         if (type_W ==2 ) # Periodic
             if (ix==1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx-2,iy-3,iz-3]; end
@@ -206,17 +207,17 @@ end
             if (ix==3 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx-0,iy-3,iz-3]; end
         end
 
-        # if (type_E ==0 ) # Neumann
-        #     if (ix==nx+6-0 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx,iy-3,iz-3]; end
-        #     if (ix==nx+6-1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx,iy-3,iz-3]; end
-        #     if (ix==nx+6-2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx,iy-3,iz-3]; end
-        # end
+        if (type_E ==0 ) # Neumann
+            if (ix==nx+6-0 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx-2,iy-3,iz-3]; end
+            if (ix==nx+6-1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx-1,iy-3,iz-3]; end
+            if (ix==nx+6-2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[nx-0,iy-3,iz-3]; end
+        end
 
-        # if (type_E ==1 ) # Dirichlet
-        #     if (ix==nx+6-0 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_E - Fc[nx-2,iy-3,iz-3]; end
-        #     if (ix==nx+6-1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_E - Fc[nx-1,iy-3,iz-3]; end
-        #     if (ix==nx+6-2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_E - Fc[nx-0,iy-3,iz-3]; end
-        # end
+        if (type_E ==1 ) # Dirichlet
+            if (ix==nx+6-0 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_E - Fc[nx-2,iy-3,iz-3]; end
+            if (ix==nx+6-1 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_E - Fc[nx-1,iy-3,iz-3]; end
+            if (ix==nx+6-2 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_E - Fc[nx-0,iy-3,iz-3]; end
+        end
 
         if (type_E ==2 ) # Periodic
             if (ix==nx+6-0 && iy>3 && iy<ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[3,iy-3,iz-3]; end
@@ -235,17 +236,17 @@ end
         iyiii = iy + 3
         iziii = iz + 3
         if @participate_ixxx(Fc_exxx) @in_xxx(Fc_exxx) = @all(Fc); end
-        # if (type_S ==0 ) # Neumann
-        #     if (ix>3 && ix<nx+6-2 && iy==1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,1,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,1,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==3 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,1,iz-3]; end
-        # end
+        if (type_S ==0 ) # Neumann
+            if (ix>3 && ix<nx+6-2 && iy==1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,3,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,2,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==3 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,1,iz-3]; end
+        end
 
-        # if (type_S ==1 ) # Dirichlet
-        #     if (ix>3 && ix<nx+6-2 && iy==1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_S - Fc[ix-3,1,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_S - Fc[ix-3,2,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==3 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_S - Fc[ix-3,3,iz-3]; end
-        # end
+        if (type_S ==1 ) # Dirichlet
+            if (ix>3 && ix<nx+6-2 && iy==1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_S - Fc[ix-3,3,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_S - Fc[ix-3,2,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==3 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_S - Fc[ix-3,1,iz-3]; end
+        end
 
         if (type_S ==2 ) # Periodic
             if (ix>3 && ix<nx+6-2 && iy==1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny-2,iz-3]; end
@@ -253,17 +254,17 @@ end
             if (ix>3 && ix<nx+6-2 && iy==3 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny-0,iz-3]; end
         end
 
-        # if (type_N ==0 ) # Neumann
-        #     if (ix>3 && ix<nx+6-2 && iy==ny+6-0 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==ny+6-1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny,iz-3]; end
-        # end
+        if (type_N ==0 ) # Neumann
+            if (ix>3 && ix<nx+6-2 && iy==ny+6-0 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny-2,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==ny+6-1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny-1,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,ny-0,iz-3]; end
+        end
 
-        # if (type_N ==1 ) # Dirichlet
-        #     if (ix>3 && ix<nx+6-2 && iy==ny+6-0 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_N - Fc[ix-3,ny-2,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==ny+6-1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_N - Fc[ix-3,ny-1,iz-3]; end
-        #     if (ix>3 && ix<nx+6-2 && iy==ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_N - Fc[ix-3,ny-0,iz-3]; end
-        # end
+        if (type_N ==1 ) # Dirichlet
+            if (ix>3 && ix<nx+6-2 && iy==ny+6-0 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_N - Fc[ix-3,ny-2,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==ny+6-1 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_N - Fc[ix-3,ny-1,iz-3]; end
+            if (ix>3 && ix<nx+6-2 && iy==ny+6-2 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_N - Fc[ix-3,ny-0,iz-3]; end
+        end
 
         if (type_N ==2 ) # Periodic
             if (ix>3 && ix<nx+6-2 && iy==ny+6-0 && iz>3 && iz<nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,3,iz-3]; end
@@ -282,17 +283,17 @@ end
         iyiii = iy + 3
         iziii = iz + 3
         if @participate_ixxx(Fc_exxx) @in_xxx(Fc_exxx) = @all(Fc); end
-        # if (type_B ==0 ) # Neumann
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==1) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,1]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==2) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,1]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==3) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,1]; end
-        # end
+        if (type_B ==0 ) # Neumann
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==1) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,3]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==2) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,2]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==3) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,1]; end
+        end
 
-        # if (type_B ==1 ) # Dirichlet
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==1) Fc_exxx[ix,iy,iz] = 2*val_B - Fc[ix-3,iz-3,1]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==2) Fc_exxx[ix,iy,iz] = 2*val_B - Fc[ix-3,iz-3,2]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==3) Fc_exxx[ix,iy,iz] = 2*val_B - Fc[ix-3,iz-3,3]; end
-        # end
+        if (type_B ==1 ) # Dirichlet
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==1) Fc_exxx[ix,iy,iz] = 2*val_B - Fc[ix-3,iy-3,3]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==2) Fc_exxx[ix,iy,iz] = 2*val_B - Fc[ix-3,iy-3,2]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==3) Fc_exxx[ix,iy,iz] = 2*val_B - Fc[ix-3,iy-3,1]; end
+        end
 
         if (type_B ==2 ) # Periodic
             if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==1) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz-2]; end
@@ -300,17 +301,17 @@ end
             if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==3) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz-0]; end
         end
 
-        # if (type_F ==0 ) # Neumann
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-0) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-1) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz]; end
-        # end
+        if (type_F ==0 ) # Neumann
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-0) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz-2]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-1) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz-1]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-2) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,nz-0]; end
+        end
 
-        # if (type_F ==1 ) # Dirichlet
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-0) Fc_exxx[ix,iy,iz] = 2*val_F - Fc[ix-3,iy-3,nz-2]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-1) Fc_exxx[ix,iy,iz] = 2*val_F - Fc[ix-3,iy-3,nz-1]; end
-        #     if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_F - Fc[ix-3,iy-3,nz-0]; end
-        # end
+        if (type_F ==1 ) # Dirichlet
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-0) Fc_exxx[ix,iy,iz] = 2*val_F - Fc[ix-3,iy-3,nz-2]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-1) Fc_exxx[ix,iy,iz] = 2*val_F - Fc[ix-3,iy-3,nz-1]; end
+            if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-2) Fc_exxx[ix,iy,iz] = 2*val_F - Fc[ix-3,iy-3,nz-0]; end
+        end
 
         if (type_F ==2 ) # Periodic
             if (ix>3 && ix<nx+6-2 && iy>3 && iy<ny+6-2 && iz==nz+6-0) Fc_exxx[ix,iy,iz] = Fc[ix-3,iy-3,3]; end
@@ -372,20 +373,20 @@ order  = 2.0;
 # BC_val_E  = 0.0
 
 # Boundaries
-BC_type_W = 2
-BC_val_W  = 0.0
-BC_type_E = 2
-BC_val_E  = 0.0
+BC_type_W = 1
+BC_val_W  = 1.0
+BC_type_E = 1
+BC_val_E  = 1.0
 
-BC_type_S = 2
-BC_val_S  = 0.0
-BC_type_N = 2
-BC_val_N  = 0.0
+BC_type_S = 1
+BC_val_S  = 1.0
+BC_type_N = 1
+BC_val_N  = 1.0
 
-BC_type_B = 2
-BC_val_B  = 0.0
-BC_type_F = 2
-BC_val_F  = 0.0
+BC_type_B = 1
+BC_val_B  = 1.0
+BC_type_F = 1
+BC_val_F  = 1.0
 
 # Domain
 xmin     = -0.5;  xmax = 0.5;  Lx = xmax - xmin;
@@ -393,7 +394,6 @@ ymin     = -0.5;  ymax = 0.5;  Ly = ymax - ymin;
 zmin     = -0.5;  zmax = 0.5;  Lz = zmax - zmin;
 # Numerics
 nout     = 10;
-fact     = 3;
 nx       = fact*32-6;
 ny       = fact*32-6;
 nz       = fact*32-6;
@@ -423,8 +423,8 @@ zv  = LinRange(xmin, zmax, nz+1)
 @printf("Grid was set up!\n")
 # Initial conditions
 Vx       =  myones(nx+1,ny+0,nz+0);
-# Vy       =  myones(nx+0,ny+1,nz+0);
-Vy       =  myzeros(nx+0,ny+1,nz+0);
+Vy       =  myones(nx+0,ny+1,nz+0);
+#Vy       =  myzeros(nx+0,ny+1,nz+0);
 # Vx       = Array(Vx);
 # Vy       = Array(Vy);
 # Vx      .=  yvx;#myones(nx+1,ny+0,nz+0);
@@ -436,10 +436,11 @@ Tc       =  myzeros(nx+0,ny+0,nz+0);
 # x0       = 0.9
 # y0       = 0.5*(ymin+ymax)
 # z0       = 0.5*(zmin+zmax)
-x0       = 0.0
-y0       = 0.0
-z0       = 0.5*(zmin+zmax)
+x0       = -0.25
+y0       = -0.25
+z0       = -0.25
 sig2     = 0.005
+Tbg      = 1;
 #Define kernel launch params (used only if USE_GPU set true).
 cuthreads = (32, 8, 1 )
 cublocks  = ( 1, 4, 32).*fact
