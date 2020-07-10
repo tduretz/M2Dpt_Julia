@@ -19,8 +19,9 @@ dy       = Ly/ny;
 dz       = Lz/nz;
 dt       = 0.25*min(min(dx,dy),dz) / 4;
 
-BC   = 1;
-valW = 1.0;
+% Dirichlet boundary conditions
+BC   = 4;
+valW =2.0;
 valE = 1.0;
 valS = 1.0;
 valN = 1.0;
@@ -100,7 +101,7 @@ for it=1:nt
             phxm1 = 1/dx*(phie(2:end-1,2:end-1) - phie(1:end-2,2:end-1));
             phxp1 = 1/dx*(phie(3:end,2:end-1)   - phie(2:end-1,2:end-1));
         else
-            [phxm1,phxp1,c,d] = weno5(phi1t, dx, dy , 1, 0, BC, valW, valE, valS, valN);
+            [phxm1,phxp1,c,d] = weno5_v3(phi1t, dx, dy , 1, 0, BC, valW, valE, valS, valN);
         end
         phi1t = phi1t - dimsplit*dt*(vxp1.*phxm1 + vxm1.*phxp1);
     end
@@ -113,7 +114,7 @@ for it=1:nt
             phym1 = 1/dy*(phie(2:end-1,2:end-1) - phie(2:end-1,1:end-2));
             phyp1 = 1/dy*(phie(2:end-1,3:end)   - phie(2:end-1,2:end-1));
         else
-            [a,b,phym1,phyp1] = weno5(phi1t, dx, dy , 0, 1, BC, valW, valE, valS, valN);
+            [a,b,phym1,phyp1] = weno5_v3(phi1t, dx, dy , 0, 1, BC, valW, valE, valS, valN);
         end
         phi1t = phi1t - dt*(vyp1.*phym1 + vym1.*phyp1) - (1-dimsplit)*dt*(vxp1.*phxm1 + vxm1.*phxp1);
     end
