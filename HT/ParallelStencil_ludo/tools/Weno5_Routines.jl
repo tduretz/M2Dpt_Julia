@@ -9,8 +9,8 @@
         if (Vx[ix,iy,iz] > 0.00) Vxm[ix,iy,iz] = 0.00         end
     end
     if (ix<=size(Vxp,1) && iy<=size(Vxp,2) && iz<=size(Vxp,3))
-        if (Vx[ix+1,iy,iz] < 0.00) Vxp[ix,iy,iz] = Vx[ix+1,iy,iz] end
-        if (Vx[ix+1,iy,iz] > 0.00) Vxp[ix,iy,iz] = 0.00           end
+        if (Vx[ix+1,iy,iz] < 0.00) Vxp[ix,iy,iz] = 0.00           end
+        if (Vx[ix+1,iy,iz] > 0.00) Vxp[ix,iy,iz] = Vx[ix+1,iy,iz] end
     end
     return
 end
@@ -22,8 +22,8 @@ end
         if (Vy[ix,iy,iz] > 0.00) Vym[ix,iy,iz] = 0.00         end
     end
     if (ix<=size(Vyp,1) && iy<=size(Vyp,2) && iz<=size(Vyp,3))
-        if (Vy[ix,iy+1,iz] < 0.00) Vyp[ix,iy,iz] = Vy[ix,iy+1,iz] end
-        if (Vy[ix,iy+1,iz] > 0.00) Vyp[ix,iy,iz] = 0.00           end
+        if (Vy[ix,iy+1,iz] < 0.00) Vyp[ix,iy,iz] = 0.00           end
+        if (Vy[ix,iy+1,iz] > 0.00) Vyp[ix,iy,iz] = Vy[ix,iy+1,iz] end
     end
     return
  end
@@ -35,8 +35,8 @@ end
         if (Vz[ix,iy,iz] > 0.00) Vzm[ix,iy,iz] = 0.00         end
     end
     if (ix<=size(Vzp,1) && iy<=size(Vzp,2) && iz<=size(Vzp,3))
-        if (Vz[ix,iy,iz+1] < 0.00) Vzp[ix,iy,iz] = Vz[ix,iy,iz+1] end
-        if (Vz[ix,iy,iz+1] > 0.00) Vzp[ix,iy,iz] = 0.00           end
+        if (Vz[ix,iy,iz+1] < 0.00) Vzp[ix,iy,iz] = 0.00           end
+        if (Vz[ix,iy,iz+1] > 0.00) Vzp[ix,iy,iz] = Vz[ix,iy,iz+1] end
     end
     return
 end
