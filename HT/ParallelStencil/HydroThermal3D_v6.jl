@@ -1,7 +1,6 @@
 const USE_GPU  = true
 const GPU_ID   = 0
 const USE_MPI  = false
-const disksave = false        # save results to disk in binary format
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
@@ -28,7 +27,7 @@ Advection = 1
 Vizu      = 0
 Save      = 1
 fact      = 2
-nt        = 100
+nt        = 30
 nout      = 10
 dt_fact   = 10
 
@@ -44,11 +43,11 @@ dt_fact   = 10
 	return
 end
 
-@parallel function Compute_Rp!(Rp::Data.Array, kyTy::Data.Array, Ra::Data.Number, _dy::Data.Number)
+@parallel function Compute_Rp!(Rp::Data.Array, ky::Data.Array, Ty::Data.Array, Ra::Data.Number, _dy::Data.Number)
 
-	@all(Rp) = Ra*_dy*@d_ya(kyTy)
+    @all(Rp) = Ra*_dy*@dmul_ya(ky, Ty)
 
-	return
+    return
 end
 
 @parallel function InitThermal!(Rt::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, ktv::Data.Array, _dt::Data.Number)
@@ -61,7 +60,7 @@ end
     return
 end
 
-@parallel function ComputeFlux!(kx::Data.Array,ky::Data.Array,kz::Data.Array, A::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array,
+@parallel function ComputeFlux!(qx::Data.Array, qy::Data.Array, qz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, A::Data.Array,
                                 _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
 
     @all(qx) = -@all(kx)*(_dx*@d_xi(A))
@@ -71,7 +70,7 @@ end
     return
 end
 
-@parallel function UpdateT!(_dt::Data.Number, dtau::Data.Number, T::Data.Array, R::Data.Array, F::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array,
+@parallel function UpdateT!(F::Data.Array, T::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array, _dt::Data.Number, dtau::Data.Number,
                             _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
 
     @all(F) = @all(R) + _dt*@inn(T) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
@@ -80,15 +79,15 @@ end
     return
 end
 
-@parallel function ResidualDiffusion!(R::Data.Array, F::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array,
+@parallel function ResidualDiffusion!(F::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array,
                                       _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
 
-	@all(F ) = @all(R) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
+	@all(F) = @all(R) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
 
     return
 end
 
-@parallel function UpdateP!(dampx::Data.Number, dtau::Data.Number, P::Data.Array, F::Data.Array, F0::Data.Array)
+@parallel function UpdateP!(F0::Data.Array, P::Data.Array, F::Data.Array, dampx::Data.Number, dtau::Data.Number)
 
     @all(F0) = @all(F) + dampx*@all(F0)
     @inn(P ) = @inn(P) - dtau *@all(F0)
@@ -159,6 +158,19 @@ dx, dy, dz = Lx/Nix, Ly/Niy, Lz/Niz                                             
 dt       = min(dx,dy,dz)^2/6.1
 _dx, _dy, _dz = 1.0/dx, 1.0/dy, 1.0/dz
 _dt      = 1.0/dt
+# PT iteration parameters
+nitmax  = 1e4
+nitout  = 1000
+# Thermal solver
+tolT    = 1e-8
+tetT    = 0.1
+dtauT   = tetT*min(dx,dy,dz)^2/4.1
+# Darcy solver
+tolP     = 1e-10
+tetP     = 1/4/3
+dtauP    = tetP/6.1*min(dx,dy,dz)^2
+Pdamp    = 1.25
+dampx    = 1*(1-Pdamp/min(nx,ny,nz))
 @printf("Go go!!\n")
 
 # Initialisation
@@ -182,7 +194,6 @@ Rt       = @zeros(nx  ,ny  ,nz  )
 Rp       = @zeros(nx  ,ny  ,nz  )
 kx       = @zeros(nx+1,ny  ,nz  )
 ky       = @zeros(nx  ,ny+1,nz  )
-kyTy     = @zeros(nx  ,ny+1,nz  )
 kz       = @zeros(nx  ,ny  ,nz+1)
 qx       = @zeros(nx+1,ny  ,nz  )
 qy       = @zeros(nx  ,ny+1,nz  )
@@ -248,20 +259,13 @@ evol=[]; it1=0; time=0             #SO: added warmpup; added one call to tic(); 
 for it = it1:nt
 
     @printf("Thermal solver\n");
-    # PT iteration parameters
-    nitmax  = 1e4
-    nitout  = 1000
-    tolT    = 1e-8
-    tetT    = 0.1
-    dtauT   = tetT*min(dx,dy,dz)^2/4.1
-
 	@parallel cublocks cuthreads ResetA!(Ft,Rt)
 	@parallel cublocks cuthreads InitThermal!(Rt, kx, ky, kz, Tc_ex, ktv, _dt)
 
     for iter = 0:nitmax
         @parallel cublocks cuthreads SetPressureBCs!(Tc_ex, Tbot, Ttop)
-        @parallel cublocks cuthreads ComputeFlux!(kx, ky, kz, Tc_ex, qx, qy, qz, _dx, _dy, _dz)
-        @parallel cublocks cuthreads UpdateT!(_dt, dtauT, Tc_ex, Rt, Ft, qx, qy, qz, _dx, _dy, _dz)
+        @parallel cublocks cuthreads ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
+        @parallel cublocks cuthreads UpdateT!(Ft, Tc_ex, Rt, qx, qy, qz, _dt, dtauT, _dx, _dy, _dz)
         if (USE_MPI) update_halo!(Tc_ex); end
         if mod(iter,nitout) == 1
             # nFt = norm(Ft)/sqrt(nx*ny*nz) # Question 3 - how to norm with GPU and MPI
@@ -275,25 +279,15 @@ for it = it1:nt
     @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum_g(Tc_ex), maximum_g(Tc_ex) )
 
     @printf("Darcy solver\n");
-    # PT iteration parameters
-    nitmax   = 1e4
-    nitout   = 1000
-    tolP     = 1e-10
-    tetP     = 1/4/3
-    dtauP    = tetP/6.1*min(dx,dy,dz)^2
-    Pdamp    = 1.25
-    dampx    = 1*(1-Pdamp/min(nx,ny,nz))
-
 	@parallel cublocks cuthreads ResetA!(Ft, Ft0)
 	@parallel cublocks cuthreads InitDarcy!(Ty, kx, ky, kz, Tc_ex, kfv, _dt)
-	@parallel cublocks cuthreads Multiply!(Ty, ky, kyTy)
-	@parallel cublocks cuthreads Compute_Rp!(Rp, kyTy, Ra, _dy)
+    @parallel cublocks cuthreads Compute_Rp!(Rp, ky, Ty, Ra, _dy)
 
     for iter = 0:nitmax
         @parallel cublocks cuthreads SetPressureBCs!(Pc_ex, Pbot, Ptop)
-        @parallel cublocks cuthreads ComputeFlux!(kx, ky, kz, Pc_ex, qx, qy, qz, _dx, _dy, _dz)
-        @parallel cublocks cuthreads ResidualDiffusion!(Rp, Ft, qx, qy, qz, _dx, _dy, _dz)
-        @parallel cublocks cuthreads UpdateP!(dampx, dtauP, Pc_ex, Ft, Ft0)
+        @parallel cublocks cuthreads ComputeFlux!(qx, qy, qz, kx, ky, kz, Pc_ex, _dx, _dy, _dz)
+        @parallel cublocks cuthreads ResidualDiffusion!(Ft, Rp, qx, qy, qz, _dx, _dy, _dz)
+        @parallel cublocks cuthreads UpdateP!(Ft0, Pc_ex, Ft, dampx, dtauP)
 
         if (USE_MPI) update_halo!(Pc_ex); end
         if mod(iter,nitout) == 1
@@ -314,9 +308,8 @@ for it = it1:nt
         @printf("Advecting with Weno5!\n")
         # Advection
         order = 2.0
-        @. Vx = -kx * ( Pc_ex[2:end,2:end-1,2:end-1] - Pc_ex[1:end-1,2:end-1,2:end-1] ) /dx
-        @. Vy = -ky * ((Pc_ex[2:end-1,2:end,2:end-1] - Pc_ex[2:end-1,1:end-1,2:end-1] ) /dy - Ra*Ty)
-        @. Vz = -kz * ( Pc_ex[2:end-1,2:end-1,2:end] - Pc_ex[2:end-1,2:end-1,1:end-1] ) /dz
+
+        @parallel cublocks cuthreads Init_vel!(Vx, Vy, Vz, kx, ky, kz, Pc_ex, Ty, Ra, _dx, _dy, _dz)
         # Boundaries
         BC_type_W = 0
         BC_val_W  = 0.0

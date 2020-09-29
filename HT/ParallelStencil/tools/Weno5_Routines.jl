@@ -2,6 +2,15 @@
 # DatArray_k --> Data.Array
 # DAT --> Data.Number
 
+@parallel function Init_vel!(Vx::Data.Array, Vy::Data.Array, Vz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Pc_ex::Data.Array, Ty::Data.Array, Ra::Data.Number, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
+
+    @all(Vx) = -@all(kx) * _dx*@d_xi(Pc_ex)
+    @all(Vy) = -@all(ky) *(_dy*@d_yi(Pc_ex) - Ra*@all(Ty))
+    @all(Vz) = -@all(kz) * _dz*@d_zi(Pc_ex)
+
+    return
+end
+
 @parallel_indices (ix,iy,iz)function VxPlusMinus!(Vxm::Data.Array, Vxp::Data.Array, Vx::Data.Array)
 
     if (ix<=size(Vxm,1) && iy<=size(Vxm,2) && iz<=size(Vxm,3))
