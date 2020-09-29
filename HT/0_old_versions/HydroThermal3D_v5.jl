@@ -4,7 +4,7 @@
 #     const USE_GPU  = true      # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
 # else
 #     println("Using CPU")
-    const USE_GPU  = false
+    const USE_GPU  = true
 # end
 const USE_MPI  = false
 const DAT      = Float64   # Precision (Float64 or Float32)
@@ -23,8 +23,9 @@ gr()
 Advection = 1
 Vizu      = 0
 Save      = 1
-fact      = 1
-nt        = 1
+fact      = 12
+nt        = 10000
+nout      = 50;
 
 ####################### Kernels Tib
 
@@ -112,7 +113,7 @@ end
 
 # (kfv, Tc_ex, xce2, yce2, xv2, yv2, yc2, Tbot, Ttop, dT, xmax, ymax, Ly)
 
-@views function SetInitialConditions(kfv::Array{Float64,3}, Tc_ex::Array{Float64,3}, xce2::Array{Float64,3}, yce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, yc2::Array{Float64,3}, Tbot::DAT, Ttop::DAT, dT::DAT, xmax::DAT, ymax::DAT, Ly::DAT)
+@views function SetInitialConditions(kfv::Array{Float64,3}, Tc_ex::Array{Float64,3}, xce2::Array{Float64,3}, yce2::Array{Float64,3}, zce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, yc2::Array{Float64,3}, Tbot::DAT, Ttop::DAT, dT::DAT, xmax::DAT, ymax::DAT, zmax::DAT, Ly::DAT)
 # @views function SetInitialConditions(kfv, Tc_ex, Tbot, Ttop, dT, xce2, yce2, xv2, yv2, Ly, yc2, xmax, ymax)
     # Initial conditions: Draw Fault
     kfv[ yv2.>=2/3*Ly ] .= kfv[ yv2.>=2/3*Ly ] .+ 20;
@@ -124,7 +125,8 @@ end
     @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:];
     @. Tc_ex[:,1,:] = 2*Tbot - Tc_ex[:,2,:]; @. Tc_ex[:,end,:] = 2*Ttop - Tc_ex[:,end-1,:];
     @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1];
-    @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2) < 0.01 ] += 0.1
+    # SET INITIAL THERMAL PERTUBATION
+    # @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2 + (zce2-zmax/2)^2) < 0.01 ] += 0.1
 end
 
 
@@ -148,9 +150,8 @@ xmin     = -0.0;  xmax    =      1.86038; Lx = xmax - xmin;
 ymin     = -0.0;  ymax    = 1.0/4.0*xmax; Ly = ymax - ymin;
 zmin     = -0.05; zmax    =      1.86038; Lz = zmax - zmin;
 # Numerics
-nout     = 1;
 nx       = fact*32-6;
-ny       = fact*32-6;
+ny       = fact*8-6;
 nz       = fact*32-6;
 # Preprocessing
 if (USE_MPI) me, dims, nprocs, coords, comm = init_global_grid(nx, ny, nz; dimx=2, dimy=2, dimz=2);              #SO: later this can be calles as "me, = ..."
@@ -162,7 +163,7 @@ Niz      = USE_MPI ? nz_g() : nz;                                               
 dx       = Lx/Nix;                                                              #SO: why not dx = Lx/(nx-1) or dx = Lx/(Nix-1) respectively
 dy       = Ly/Niy;
 dz       = Lz/Niz;
-dt       = min(dx,dy,dz)^2/4.1*2.5;
+dt       = min(dx,dy,dz)^2/4.1*2.0;
 @printf("Go go!!\n")
 
 # Initialisation
@@ -229,7 +230,7 @@ end
 
 @time Tc_ex     = Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE CPU:
 @time @time kfv = Array(kfv);  # Ensure it is temporarily a CPU array
-@time SetInitialConditions(kfv, Tc_ex, xce2, yce2, xv2, yv2, zv2, yc2, Tbot, Ttop, dT, xmax, ymax, Ly)
+@time SetInitialConditions(kfv, Tc_ex, xce2, yce2, zce2, xv2, yv2, zv2, yc2, Tbot, Ttop, dT, xmax, ymax, zmax, Ly)
 @time Tc_ex = DatArray(Tc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
 @time kfv   = DatArray(kfv);
 
@@ -297,10 +298,10 @@ for it = it1:nt
     nitmax   = 1e4;
     nitout   = 1000;
     tolP     = 1e-10;
-    tetP     = 1/4;
+    tetP     = 1/4/3;
     dtauP    = tetP/6.1*min(dx,dy,dz)^2;
     Pdamp    = 1.25;
-    dampx    = 1*(1-Pdamp/nx);
+    dampx    = 1*(1-Pdamp/min(nx,ny,nz));
     Ft       = myzeros(nx  ,ny  ,nz  )
     Ft0      = myzeros(nx  ,ny  ,nz  )
     Rp      = Array(Rp)
@@ -310,7 +311,6 @@ for it = it1:nt
     kz      = Array(kz)
     Ty      = Array(Ty)
     Tc_ex   = Array(Tc_ex)
-
     Ty      = 0.50*(Tc_ex[2:end-1,2:end,2:end-1] + Tc_ex[2:end-1,1:end-1,2:end-1])
     @. kx   = 0.25*(kfv[:,1:end-1,1:end-1] + kfv[:,1:end-1,2:end-0] + kfv[:,2:end-0,1:end-1] + kfv[:,2:end-0,2:end-0])
     @. ky   = 0.25*(kfv[1:end-1,:,1:end-1] + kfv[1:end-1,:,2:end-0] + kfv[2:end-0,:,1:end-1] + kfv[2:end-0,:,2:end-0])
@@ -429,9 +429,10 @@ for it = it1:nt
        @kernel cublocks cuthreads TimeAveraging(Tc, Told, order, nx, ny, nz);
 
        ####
-       Tc_ex[2:end-1,2:end-1,2:end-1] = copy(Tc);
+       Tc_ex[2:end-1,2:end-1,2:end-1] = Tc;
        ####
        @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
+
     end
 
     #---------------------------------------------------------------------

@@ -25,43 +25,30 @@ using WriteVTK
 
 # Visualise
 Advection = 1
-Vizu      = 1
-Save      = 0
-fact      = 8
-nt        = 2
-nout      = 1
+Vizu      = 0
+Save      = 1
+fact      = 2
+nt        = 100
+nout      = 10
+dt_fact   = 10
 
-####################### Kernels Tib
-@parallel function ResetA!(A::Data.Array, B::Data.Array)
+############################################## Kernels for HT code ##############################################
 
-    @all(A) = 0.0
-    @all(B) = 0.0
+@parallel function InitDarcy!(Ty::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, kfv::Data.Array, _dt::Data.Number)
 
-    return
+	@all(Ty) = @av_yi(Tc_ex)
+	@all(kx) = @av_yza(kfv)
+	@all(ky) = @av_xza(kfv)
+	@all(kz) = @av_xya(kfv)
+
+	return
 end
 
-@parallel function Cpy_inn_to_all!(A::Data.Array, B::Data.Array)
+@parallel function Compute_Rp!(Rp::Data.Array, kyTy::Data.Array, Ra::Data.Number, _dy::Data.Number)
 
-    @all(A) = @inn(B)
+	@all(Rp) = Ra*_dy*@d_ya(kyTy)
 
-    return
-end
-
-@parallel function Cpy_all_to_inn!(A::Data.Array, B::Data.Array)
-
-    @inn(A) = @all(B)
-
-    return
-end
-
-@parallel function Init_Vel!(Vx::Data.Array, Vy::Data.Array, Vz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Pc_ex::Data.Array, Ty::Data.Array, Ra::Data.Number,
-                             _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
-    @all(Vx) = -@all(kx)* _dx*@d_xi(Pc_ex)
-    @all(Vy) = -@all(ky)*(_dy*@d_yi(Pc_ex) - Ra*@all(Ty))
-    @all(Vz) = -@all(kz)* _dz*@d_zi(Pc_ex)
-
-    return
+	return
 end
 
 @parallel function InitThermal!(Rt::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, ktv::Data.Array, _dt::Data.Number)
@@ -70,23 +57,6 @@ end
     @all(kx) = @av_yza(ktv)
     @all(ky) = @av_xza(ktv)
     @all(kz) = @av_xya(ktv)
-
-    return
-end
-
-@parallel function InitDarcy!(Ty::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, kfv::Data.Array, _dt::Data.Number)
-
-    @all(Ty) = @d_yi(Tc_ex)
-    @all(kx) = @av_yza(kfv)
-    @all(ky) = @av_xza(kfv)
-    @all(kz) = @av_xya(kfv)
-
-    return
-end
-
-@parallel function Compute_Rp!(Rp::Data.Array, Ty::Data.Array, ky::Data.Array, Ra::Data.Number, _dy::Data.Number)
-
-    @all(Rp) = Ra*_dy*@d_ya(ky)*@d_ya(Ty)
 
     return
 end
@@ -138,7 +108,6 @@ end
     return
 end
 
-
 @views function SetInitialConditions(kfv::Array{Float64,3}, Tc_ex::Array{Float64,3}, xce2::Array{Float64,3}, yce2::Array{Float64,3}, zce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, yc2::Array{Float64,3}, Tbot::Data.Number, Ttop::Data.Number, dT::Data.Number, xmax::Data.Number, ymax::Data.Number, zmax::Data.Number, Ly::Data.Number)
 # @parallel function SetInitialConditions(kfv, Tc_ex, Tbot, Ttop, dT, xce2, yce2, xv2, yv2, Ly, yc2, xmax, ymax)
     # Initial conditions: Draw Fault
@@ -156,12 +125,12 @@ end
 end
 
 
-#######################
-## Main code
+############################################## MAIN CODE ##############################################
+
 @views function HydroThermal3D()
 @printf("Starting HydroThermal3D!\n")
 # Physics
-Ra       = 60.0
+Ra       = 60.0 # important to put the digit there - if not, it is defined as an Int64
 dT       = 1.0
 Ttop     = 0.0
 Tbot     = Ttop + dT
@@ -187,7 +156,7 @@ Nix      = USE_MPI ? nx_g() : nx                                                
 Niy      = USE_MPI ? ny_g() : ny                                                #SO: this is obtained from the global_grid.
 Niz      = USE_MPI ? nz_g() : nz                                                #SO: this is obtained from the global_grid.
 dx, dy, dz = Lx/Nix, Ly/Niy, Lz/Niz                                             #SO: why not dx = Lx/(nx-1) or dx = Lx/(Nix-1) respectively
-dt       = min(dx,dy,dz)^2/4.1*1.0 
+dt       = min(dx,dy,dz)^2/6.1
 _dx, _dy, _dz = 1.0/dx, 1.0/dy, 1.0/dz
 _dt      = 1.0/dt
 @printf("Go go!!\n")
@@ -213,6 +182,7 @@ Rt       = @zeros(nx  ,ny  ,nz  )
 Rp       = @zeros(nx  ,ny  ,nz  )
 kx       = @zeros(nx+1,ny  ,nz  )
 ky       = @zeros(nx  ,ny+1,nz  )
+kyTy     = @zeros(nx  ,ny+1,nz  )
 kz       = @zeros(nx  ,ny  ,nz+1)
 qx       = @zeros(nx+1,ny  ,nz  )
 qy       = @zeros(nx  ,ny+1,nz  )
@@ -263,7 +233,7 @@ end
 @time kfv   = Array(kfv)   # Ensure it is temporarily a CPU array
 @time SetInitialConditions(kfv, Tc_ex, xce2, yce2, zce2, xv2, yv2, zv2, yc2, Tbot, Ttop, dT, xmax, ymax, zmax, Ly)
 @time Tc_ex = Data.Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
-@time kfv   = Data.Array(kfv) 
+@time kfv   = Data.Array(kfv)
 
 @printf("Initial conditions were set up!\n")
 
@@ -285,8 +255,8 @@ for it = it1:nt
     tetT    = 0.1
     dtauT   = tetT*min(dx,dy,dz)^2/4.1
 
-    @parallel cublocks cuthreads ResetA!(Ft)
-    @parallel cublocks cuthreads InitThermal!(Rt, kx, ky, kz, Tc_ex, ktv, _dt)
+	@parallel cublocks cuthreads ResetA!(Ft,Rt)
+	@parallel cublocks cuthreads InitThermal!(Rt, kx, ky, kz, Tc_ex, ktv, _dt)
 
     for iter = 0:nitmax
         @parallel cublocks cuthreads SetPressureBCs!(Tc_ex, Tbot, Ttop)
@@ -314,9 +284,10 @@ for it = it1:nt
     Pdamp    = 1.25
     dampx    = 1*(1-Pdamp/min(nx,ny,nz))
 
-    @parallel cublocks cuthreads ResetA!(Ft, Ft0)
-    @parallel cublocks cuthreads InitDarcy!(Ty, kx, ky, kz, Tc_ex, kfv, _dt)
-    @parallel cublocks cuthreads Compute_Rp!(Rp, Ty, ky, Ra, _dy)
+	@parallel cublocks cuthreads ResetA!(Ft, Ft0)
+	@parallel cublocks cuthreads InitDarcy!(Ty, kx, ky, kz, Tc_ex, kfv, _dt)
+	@parallel cublocks cuthreads Multiply!(Ty, ky, kyTy)
+	@parallel cublocks cuthreads Compute_Rp!(Rp, kyTy, Ra, _dy)
 
     for iter = 0:nitmax
         @parallel cublocks cuthreads SetPressureBCs!(Pc_ex, Pbot, Ptop)
@@ -343,9 +314,9 @@ for it = it1:nt
         @printf("Advecting with Weno5!\n")
         # Advection
         order = 2.0
-
-        @parallel cublocks cuthreads Init_Vel!(Vx, Vy, Vz, kx, ky, kz, Pc_ex, Ty, Ra, _dx, _dy, _dz)
-
+        @. Vx = -kx * ( Pc_ex[2:end,2:end-1,2:end-1] - Pc_ex[1:end-1,2:end-1,2:end-1] ) /dx
+        @. Vy = -ky * ((Pc_ex[2:end-1,2:end,2:end-1] - Pc_ex[2:end-1,1:end-1,2:end-1] ) /dy - Ra*Ty)
+        @. Vz = -kz * ( Pc_ex[2:end-1,2:end-1,2:end] - Pc_ex[2:end-1,2:end-1,1:end-1] ) /dz
         # Boundaries
         BC_type_W = 0
         BC_val_W  = 0.0
@@ -362,19 +333,16 @@ for it = it1:nt
         BC_type_F = 0
         BC_val_F  = 0.0
 
-        # dt = 1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
-        @printf("Time step = %2.2e s\n", dt)
-
-        # Upwind velocities
+		# Upwind velocities
         @parallel cublocks cuthreads ResetA!(Vxm, Vxp)
         @parallel cublocks cuthreads VxPlusMinus!(Vxm, Vxp, Vx)
 
         @parallel cublocks cuthreads ResetA!(Vym, Vyp)
         @parallel cublocks cuthreads VyPlusMinus!(Vym, Vyp, Vy)
 
-        @parallel cublocks cuthreads ResetA!(Vzm, Vzp)   
+        @parallel cublocks cuthreads ResetA!(Vzm, Vzp)
         @parallel cublocks cuthreads VzPlusMinus!(Vzm, Vzp, Vz)
-        
+
         ########
         @parallel cublocks cuthreads Cpy_inn_to_all!(Tc, Tc_ex)
         ########
@@ -391,35 +359,41 @@ for it = it1:nt
         end
         @parallel cublocks cuthreads TimeAveraging!(Tc, Told, order)
 
-        # Advect in y direction
-        @parallel cublocks cuthreads ArrayEqualArray!(Told, Tc)
-        for io=1:order
-            @parallel cublocks cuthreads Boundaries_y_Weno5!(Tc_exxx, Tc, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
-            @parallel cublocks cuthreads Gradients_minus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-            @parallel cublocks cuthreads dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-            @parallel cublocks cuthreads Gradients_plus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-            @parallel cublocks cuthreads dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-            @parallel cublocks cuthreads Advect!(Tc, Vyp, dTdxm, Vym, dTdxp, dt)
-        end
-        @parallel cublocks cuthreads TimeAveraging!(Tc, Told, order)
+       # Advect in y direction
+       @parallel cublocks cuthreads ArrayEqualArray!(Told, Tc)
+       for io=1:order
+           @parallel cublocks cuthreads Boundaries_y_Weno5!(Tc_exxx, Tc, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
+           @parallel cublocks cuthreads Gradients_minus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+           @parallel cublocks cuthreads dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+           @parallel cublocks cuthreads Gradients_plus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+           @parallel cublocks cuthreads dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+           @parallel cublocks cuthreads Advect!(Tc, Vyp, dTdxm, Vym, dTdxp, dt)
+       end
+       @parallel cublocks cuthreads TimeAveraging!(Tc, Told, order)
 
-        # Advect in z direction
-        @parallel cublocks cuthreads ArrayEqualArray!(Told, Tc)
-        for io=1:order
-            @parallel cublocks cuthreads Boundaries_z_Weno5!(Tc_exxx, Tc, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
-            @parallel cublocks cuthreads Gradients_minus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-            @parallel cublocks cuthreads dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-            @parallel cublocks cuthreads Gradients_plus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-            @parallel cublocks cuthreads dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-            @parallel cublocks cuthreads Advect!(Tc, Vzp, dTdxm, Vzm, dTdxp, dt)
-        end
-        @parallel cublocks cuthreads TimeAveraging!(Tc, Told, order)
+       # Advect in z direction
+       @parallel cublocks cuthreads ArrayEqualArray!(Told, Tc)
+       for io=1:order
+           @parallel cublocks cuthreads Boundaries_z_Weno5!(Tc_exxx, Tc, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
+           @parallel cublocks cuthreads Gradients_minus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+           @parallel cublocks cuthreads dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+           @parallel cublocks cuthreads Gradients_plus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+           @parallel cublocks cuthreads dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+           @parallel cublocks cuthreads Advect!(Tc, Vzp, dTdxm, Vzm, dTdxp, dt)
+       end
+       @parallel cublocks cuthreads TimeAveraging!(Tc, Told, order)
 
-        ####
-        @parallel cublocks cuthreads Cpy_all_to_inn!(Tc_ex, Tc)
-        ####
-        @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
+	   ####
+	   @parallel cublocks cuthreads Cpy_all_to_inn!(Tc_ex, Tc)
+	   ###
+       @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
+
     end
+
+	# Set dt for next step
+	dt  = dt_fact*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
+	_dt = 1/dt
+	@printf("Time step = %2.2e s\n", dt)
 
     #---------------------------------------------------------------------
 
