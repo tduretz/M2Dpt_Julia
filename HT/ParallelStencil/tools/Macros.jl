@@ -162,3 +162,35 @@ function ExCentroid2VyOnCPU!( Ty, fc_ex )
 	@. Ty += 1.0/4.0 * fv[1:end-1,:,2:end-0]
 	@. Ty += 1.0/4.0 * fv[2:end-0,:,1:end-1]
 end
+
+######################### To become macros....
+
+@parallel function ResetA!(A::Data.Array, B::Data.Array)
+
+    @all(A) = 0.0
+    @all(B) = 0.0
+
+    return
+end
+
+@parallel function Multiply!(Ty::Data.Array, ky::Data.Array, kyTy::Data.Array )
+
+	@all(kyTy) = @all(ky) * @all(Ty)
+
+	return
+end
+
+
+@parallel function Cpy_inn_to_all!(A::Data.Array, B::Data.Array)
+
+    @all(A) = @inn(B)
+
+    return
+end
+
+@parallel function Cpy_all_to_inn!(A::Data.Array, B::Data.Array)
+
+    @inn(A) = @all(B)
+
+    return
+end
