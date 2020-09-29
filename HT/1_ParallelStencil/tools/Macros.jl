@@ -107,6 +107,8 @@ macro in_xxx_zp3(A)  esc(:( $A[$ixiii  ,$iyiii  ,$iziii+3 ] )) end
 macro in_xxx_zp2(A)  esc(:( $A[$ixiii  ,$iyiii  ,$iziii+2 ] )) end
 macro in_xxx_zp1(A)  esc(:( $A[$ixiii  ,$iyiii  ,$iziii+1 ] )) end
 
+macro  dmul_ya(A,B)  esc(:( ($A[$ix, $iy+1, $iz] * $B[$ix, $iy+1, $iz]) - ($A[$ix, $iy, $iz] * $B[$ix, $iy, $iz]) )) end
+
 function Centroid2VerticesOnCPU!( fv, fc )
 	@. fv                          = 0.0
 	@. fv[2:end-1,2:end-1,2:end-1] += 1.0/8.0 * fc[1:end-1,1:end-1,1:end-1]
@@ -173,12 +175,12 @@ end
     return
 end
 
-@parallel function Multiply!(Ty::Data.Array, ky::Data.Array, kyTy::Data.Array )
+# @parallel function Multiply!(Ty::Data.Array, ky::Data.Array, kyTy::Data.Array )
 
-	@all(kyTy) = @all(ky) * @all(Ty)
+# 	@all(kyTy) = @all(ky) * @all(Ty)
 
-	return
-end
+# 	return
+# end
 
 
 @parallel function Cpy_inn_to_all!(A::Data.Array, B::Data.Array)
