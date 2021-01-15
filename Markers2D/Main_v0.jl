@@ -3,7 +3,7 @@ using Printf
 using Statistics
 using Plots
 using LoopVectorization
-gr()
+gr(size = (750/4, 565/4))
 ########################################################################
 Vizu  = 1
 C     = 0.25
