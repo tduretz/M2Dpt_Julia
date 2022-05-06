@@ -24,7 +24,7 @@ using WriteVTK
 
 # Visualise
 Advection = 1
-Vizu      = 0
+Vizu      = 1
 Save      = 1
 fact      = 2
 nt        = 100
@@ -153,6 +153,7 @@ xmin     = -0.0;  xmax =      1.86038; Lx = xmax - xmin
 ymin     = -0.0;  ymax = 1.0/4.0*xmax; Ly = ymax - ymin
 zmin     = -0.05; zmax =      1.86038; Lz = zmax - zmin
 # Numerics
+fact     = 1 
 nx       = fact*32-6
 ny       = fact*8 -6
 nz       = fact*32-6
@@ -400,7 +401,7 @@ for it = it1:nt
     #---------------------------------------------------------------------
 
     if (Vizu == 1)
-        X = Pc_ex[2:end-1,2:end-1,2:end-1]
+        X = Tc_ex[2:end-1,2:end-1,2:end-1]
         # display( heatmap(xc, yc, transpose(X[:,:,Int(ceil(nz/2))]),c=:viridis,aspect_ratio=1) );
         display( heatmap(zc, yc, (X[Int(ceil(nx/2)),:,:]),c=:viridis,aspect_ratio=1) );
 
