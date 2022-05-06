@@ -11,7 +11,7 @@ using LoopVectorization
 using MAT
 # pyplot(size = (750/1, 565/1))
 
-path = "/Users/imac/REPO_GIT/M2Dpt_Julia/Markers2D/"
+path = @__DIR__
 
 gr(size = (750/1, 565/1))
 
@@ -103,7 +103,7 @@ end
 @views function Markers2D()
 @printf("Running on %d thread(s)\n", Threads.nthreads())
 # Import data
-file = matopen( path * "data41_benchmark.mat")
+file = matopen( path * "/data41_benchmark.mat")
 Vx   = read(file, "Vx")  # ACHTUNG THIS CONTAINS GHOST NODES AT NORTH/SOUTH
 Vy   = read(file, "Vy")  # ACHTUNG THIS CONTAINS GHOST NODES AT EAST/WEST
 Pt   = read(file, "Pt")

@@ -13,7 +13,7 @@ gr()
 # plotlyjs()
 Vizu     = 1
 WriteOut = 1
-style    = 4 # 1: Bilinear interp, 3: 1/3 - 2/3 trick, 4: new, 5: divergence-free RBF
+style    = 4 # 1: Bilinear interp, 2: 1/3 - 2/3 trick, 3: latest 2020 from Taras
 noise    = 1
 path     = @__DIR__
 ########################################################################
@@ -63,6 +63,7 @@ end
     vxm = (1-dymi/dy) * vxm13 + (dymi/dy) * vxm24
     return vxm
 end
+########################################################################
 @views function VyFromVxNodes(Vy, k, p, xce, yv, dx, dy, ncx, ncy, new)
     # Interpolate vy
     i = Int64(round(trunc( (p.x[k] - xce[1])/dx ) + 1));
@@ -100,6 +101,7 @@ end
     vym = (1-dxmj/dx)*vym12 + (dxmj/dx)*vym34
     return vym
 end
+########################################################################
 @views function VxVyFromPrNodes(Vxp ,Vyp, k, p, xce, yce, dx, dy, ncx, ncy)
     # Interpolate vy
     i = Int64((trunc( (p.x[k] - xce[1])/dx ) + 1.0));
@@ -127,310 +129,17 @@ end
     vym = Vyp[i,j]*wtmij + Vyp[i,j+1]*wtmi1j + Vyp[i+1,j]*wtmij1 + Vyp[i+1,j+1]*wtmi1j1
     return vxm, vym
 end
-@views function PrecomputeInterpolant( xce, yce, epsi )
-    i = 1
-    j = 1
-    x_locp = [xce[i]; xce[i+1]; xce[i  ]; xce[i+1]];
-    y_locp = [yce[j]; yce[j  ]; yce[j+1]; yce[j+1]];
-
-    x_ij   = zeros(4,4);
-    y_ij   = zeros(4,4);
-    r_ij   = zeros(4,4);
-
-    for j=1:4
-        for i=1:4
-            xx  = abs(x_locp[i] - x_locp[j]);
-            yy  = abs(y_locp[i] - y_locp[j]);
-            x_ij[i,j] = xx;
-            y_ij[i,j] = yy;
-            r_ij[i,j] = sqrt(xx^2 + yy^2);
-        end
-    end
-
-    rp2 = zeros(4,4);
-    phi11 = zeros(4,4);
-    phi12 = zeros(4,4);
-    phi21 = zeros(4,4);
-    phi22 = zeros(4,4);
-
-    @. rp2   = r_ij.^2;
-    @. phi11 = -2*epsi*(2*epsi*y_ij.^2 - 1) .* exp(-epsi.*rp2);
-    @. phi12 =  4*epsi^2*x_ij.*y_ij.*exp(-epsi.*rp2);
-    @. phi21 = phi12;
-    @. phi22 = -2*epsi*(2*epsi*x_ij.^2 - 1) .* exp(-epsi.*rp2);
-
-    A      = [(phi11) (phi12); (phi21) (phi22);];
-    Afact = factorize(A)
-    return Afact
-end
-
-@views function VxVyFromPrNodesDivFreeRBF(Vxp ,Vyp, k, p, xce, yce, dx, dy, ncx, ncy, Afact, epsi)
-    # Interpolate vy
-    i = Int64((trunc( (p.x[k] - xce[1])/dx ) + 1.0));
-    j = Int64((trunc( (p.y[k] - yce[1])/dy ) + 1.0));
-    if i<1
-        i=1
-    elseif i>ncx+1
-        i=ncx+1
-    end
-    if j<1
-        j=1
-    elseif j>ncy+1
-        j = ncy+1
-    end
-
-    vxm = 0.0
-    vym = 0.0
-
-    vxp    = [Vxp[i,j]; Vxp[i+1,j]; Vxp[i,j+1]; Vxp[i+1,j+1]];
-    vyp    = [Vyp[i,j]; Vyp[i+1,j]; Vyp[i,j+1]; Vyp[i+1,j+1]];
-    x_locp = [xce[i]; xce[i+1]; xce[i  ]; xce[i+1]];
-    y_locp = [yce[j]; yce[j  ]; yce[j+1]; yce[j+1]];
-
-    d      = [vxp; vyp];# + [0.5*ones(size(Vxp)); 0.5*ones(size(Vyp))];
-    c      = Afact\d;
-    cx     = c[1:4];
-    cy     = c[5:end];
-
-    x      = zeros(4,1);
-    y      = zeros(4,1);
-    rp1    = zeros(4,1);
-    phi11  = zeros(4,1);
-    phi12  = zeros(4,1);
-    phi21  = zeros(4,1);
-    phi22  = zeros(4,1);
-    @. x      = abs(x_locp - p.x[k])
-    @. y      = abs(y_locp - p.y[k])
-    @. rp1    = x.^2.0 + y.^2.0;
-    @. phi11 = -2.0*epsi*(2.0*epsi*y.^2.0 - 1.0) .* exp(-epsi.*rp1);
-    @. phi12 =  4.0*epsi^2.0*x.*y.*exp(-epsi*rp1);
-    @. phi21 = phi12;
-    @. phi22 = -2.0*epsi*(2.0*epsi*x.^2.0 - 1.0) .* exp(-epsi.*rp1);
-
-    dphi11dx  = zeros(4,1);
-    dphi21dx  = zeros(4,1);
-    dphi12dy  = zeros(4,1);
-    dphi22dy  = zeros(4,1);
-    @. dphi11dx = 4.0*epsi^2.0*x*(2.0*y^2.0*epsi - 1.0)*exp(-epsi*rp1);
-    @. dphi21dx = -8.0*x^2.0*y*epsi^3.0*exp(-epsi*rp1) + 4.0*y*epsi^2.0*exp(-epsi*rp1);
-    @. dphi12dy = -8.0*x*y^2*epsi^3.0*exp(-epsi*rp1) + 4.0*x*epsi^2.0*exp(-epsi*rp1);
-    @. dphi22dy = 4.0*y*epsi^2.0*(2.0*x^2.0*epsi - 1.0)*exp(-epsi*rp1);
-
-    vxm    = sum(phi11.*cx) + sum(phi21.*cy);
-    vym    = sum(phi12.*cx) + sum(phi22.*cy);
-    dvxdx  = sum(dphi11dx.*cx) + sum(dphi21dx.*cy);
-    dvydy  = sum(dphi12dy.*cx) + sum(dphi22dy.*cy);
-    div    = dvxdx + dvydy;
-
-    # if abs(div)>1e-20
-        # if threadid()==1 && p.phase[k] == 1
-        #     @printf("vx = %2.2e --- vy = %2.2e --- div =%2.2e\n", vxm, vym, div)
-        # end
-    # end
-
-    return vxm, vym
-end
-
-@views function VxVyFromPrNodesStaggeredDivFreeRBF(Vx ,Vy, k, p, xv, yce, xce, yv, dx, dy, ncx, ncy, Afact, epsi)
-    
-    vxm = 0.0
-    vym = 0.0
-
-    # Interpolate vx
-    i = Int64(round(trunc( (p.x[k] -  xv[1])/dx ) + 1));
-    j = Int64(round(trunc( (p.y[k] - yce[1])/dy ) + 1));
-    if i<1
-        i = 1
-    elseif i>ncx
-        i = ncx
-    end
-    if j<1
-        j = 1;
-    elseif j> ncy+1
-        j = ncy+1
-    end
-
-    vxx   = [Vx[i,j]; Vx[i+1,j]; Vx[i,j+1]; Vx[i+1,j+1]];
-    xlocx = [xv[i]; xv[i+1]; xv[i  ]; xv[i+1]];
-    ylocx = [yce[j]; yce[j  ]; yce[j+1]; yce[j+1]];
-
-    # Interpolate vy
-    i = Int64(round(trunc( (p.x[k] - xce[1])/dx ) + 1));
-    j = Int64(round(trunc( (p.y[k] -  yv[1])/dy ) + 1));
-    if i<1
-        i=1
-    elseif i>ncx+1
-        i=ncx+1
-    end
-    if j<1
-        j=1
-    elseif j>ncy
-        j = ncy
-    end
-
-    vyy    = [Vy[i,j]; Vy[i+1,j]; Vy[i,j+1]; Vy[i+1,j+1]];
-    xlocy  = [xce[i]; xce[i+1]; xce[i  ]; xce[i+1]];
-    ylocy  = [yv[j]; yv[j  ]; yv[j+1]; yv[j+1]];
-
-
-    d      = [vxx; vyy];# + [0.5*ones(size(Vxp)); 0.5*ones(size(Vyp))];
-    c      = Afact\d;
-    cx     = c[1:4];
-    cy     = c[5:end];
-
-    x11    = zeros(4,1);
-    y11    = zeros(4,1);
-    r11    = zeros(4,1);
-    x12    = zeros(4,1);
-    y12    = zeros(4,1);
-    r12    = zeros(4,1);
-    x21    = zeros(4,1);
-    y21    = zeros(4,1);
-    r21    = zeros(4,1);
-    x22    = zeros(4,1);
-    y22    = zeros(4,1);
-    r22    = zeros(4,1);
-    phi11  = zeros(4,1);
-    phi12  = zeros(4,1);
-    phi21  = zeros(4,1);
-    phi22  = zeros(4,1);
-    @. x11    = abs(xlocx-p.x[k]);
-    @. y11    = abs(ylocx-p.y[k]);
-    @. x12    = abs(xlocy-p.x[k]);
-    @. y12    = abs(ylocy-p.y[k]);
-    @. x21    = x11;
-    @. y21    = y11;
-    @. x22    = x12;
-    @. y22    = y12;
-    
-    @. r11    =  x11.^2 + y11.^2;
-    @. r12    =  x12.^2 + y12.^2;
-    @. r21    =  r11;
-    @. r22    =  r12;
-    @. phi11 = -2*epsi*(2*epsi*y11.^2 - 1) .* exp(-epsi.*r11);
-    @. phi12 =  4*epsi^2*x12.*y12.*exp(-epsi*r12);
-    @. phi21 =  4*epsi^2*x21.*y21.*exp(-epsi*r21);
-    @. phi22 = -2*epsi*(2*epsi*x22.^2 - 1) .* exp(-epsi.*r22); 
-
-    dphi11dx  = zeros(4,1);
-    dphi21dx  = zeros(4,1);
-    dphi12dy  = zeros(4,1);
-    dphi22dy  = zeros(4,1);
-    @. dphi11dx = 4*epsi.^2 *x11 *(2*y11.^2 *epsi - 1) *exp(-epsi.*r11);
-    @. dphi21dx = -8*x12.^2 *y12 *epsi.^3 *exp(-epsi.*r12) + 4*y12.*epsi.^2 *exp(-epsi.*r12);
-    @. dphi12dy = -8*x21.*y21.^2 *epsi.^3 *exp(-epsi.*r21) + 4*x21.*epsi.^2 *exp(-epsi.*r21);
-    @. dphi22dy = 4*y22.*epsi.^2 *(2*x22.^2 *epsi - 1).*exp(-epsi.*r22);
-
-    vxm    = sum(phi11.*cx) + sum(phi21.*cy);
-    vym    = sum(phi12.*cx) + sum(phi22.*cy);
-    dvxdx  = sum(dphi11dx.*cx) + sum(dphi21dx.*cy);
-    dvydy  = sum(dphi12dy.*cx) + sum(dphi22dy.*cy);
-    div    = dvxdx + dvydy;
-
-    # if abs(div)>1e-20
-        # if threadid()==1 && p.phase[k] == 1
-            # @printf("vx = %2.2e --- vy = %2.2e --- div =%2.2e\n", vxm, vym, div)
-        # end
-    # end
-
-    return vxm, vym
-end
-
-@views function PrecomputeInterpolantStaggered( xv, yce, xce, yv, epsi )
-    i = 1
-    j = 1
-    xlocx = [xv[i]; xv[i+1]; xv[i  ]; xv[i+1]];
-    ylocx = [yce[j]; yce[j  ]; yce[j+1]; yce[j+1]];
-    xlocy = [xce[i]; xce[i+1]; xce[i  ]; xce[i+1]];
-    ylocy = [yv[j]; yv[j  ]; yv[j+1]; yv[j+1]];
-
-    x11   = zeros(4,4);
-    x12   = zeros(4,4);
-    y11   = zeros(4,4);
-    y12   = zeros(4,4);
-    r11   = zeros(4,4);
-    r12   = zeros(4,4);
-    x21   = zeros(4,4);
-    x22   = zeros(4,4);
-    y21   = zeros(4,4);
-    y22   = zeros(4,4);
-    r21   = zeros(4,4);
-    r22   = zeros(4,4);
-
-    for j=1:4
-        for i=1:4
-           xx  = abs(xlocx[i] - xlocx[j]);
-           yx  = abs(ylocy[i] - ylocx[j]);
-           yy  = abs(ylocx[i] - ylocx[j]);
-           xy  = abs(xlocy[i] - xlocx[j]);
-           x11[i,j] = xx;
-           y11[i,j] = yy;
-           x12[i,j] = xy;
-           y12[i,j] = yx;
-           r11[i,j] = xx^2 + yy^2;
-           r12[i,j] = xy^2 + yx^2;
-        end
-    end
-    
-    for j=1:4
-        for i=1:4
-           xx  = abs(xlocy[i] - xlocy[j]);
-           yx  = abs(ylocx[i] - ylocy[j]);
-           yy  = abs(ylocy[i] - ylocy[j]);
-           xy  = abs(xlocx[i] - xlocy[j]);
-           x21[i,j] = xy;
-           y21[i,j] = yx;
-           x22[i,j] = xx;
-           y22[i,j] = yy;
-           r21[i,j] = xx^2 + yy^2;
-           r22[i,j] = xy^2 + yx^2;
-        end
-    end
-
-    phi11 = zeros(4,4);
-    phi12 = zeros(4,4);
-    phi21 = zeros(4,4);
-    phi22 = zeros(4,4);
-
-    @. phi11 = -2*epsi*(2*epsi*y11.^2 - 1) .* exp(-epsi.*r11);
-    @. phi12 =  4*epsi^2*x21.*y12.*exp(-epsi.*r12);
-    @. phi21 =  4*epsi^2*x21.*y21.*exp(-epsi.*r21);
-    @. phi22 = -2*epsi*(2*epsi*x22.^2 - 1) .* exp(-epsi.*r22);
-
-    A      = [(phi11) (phi12); (phi21) (phi22);];
-    Afact = factorize(A)
-    return Afact
-end
-
-
 ########################################################################
 function Markers2D()
 gr(size = (750/1, 565/1))
 @printf("Running on %d thread(s)\n", nthreads())
 # Import data
 file = matopen( path * "/data41_benchmark.mat")
-Vx  = read(file, "Vx") # ACHTUNG THIS CONTAINS GHOST NODES AT NORTH/SOUTH
-Vy  = read(file, "Vy") # ACHTUNG THIS CONTAINS GHOST NODES AT EAST/WEST
-Pt  = read(file, "Pt")
-# dt  = read(file, "dt") # ACHTUNG THIS CONTAINS GHOST NODES AT EAST/WEST
-# nt  = Int64(read(file, "ntimesteps"))
-# xmi = read(file, "xm0")
-# ymi = read(file, "ym0")
-# if style==1
-#     xm_Taras = read(file, "xm1")
-#     ym_Taras = read(file, "ym1")
-# elseif style==3
-#     xm_Taras = read(file, "xm3")
-#     ym_Taras = read(file, "ym3")
-# elseif style==1
-#     xm_Taras = read(file, "xm4")
-#     ym_Taras = read(file, "ym4")
-#     @printf("New scheme\n")
-# end
-
+Vx   = read(file, "Vx") # ACHTUNG THIS CONTAINS GHOST NODES AT NORTH/SOUTH
+Vy   = read(file, "Vy") # ACHTUNG THIS CONTAINS GHOST NODES AT EAST/WEST
+Pt   = read(file, "Pt")
 Vxpt = read(file, "Vxp")
 Vypt = read(file, "Vyp")
-
 close(file)
 ########
 itpw  = 1.0/3.0
@@ -447,8 +156,8 @@ ncy   = 40
 nmx   = 4                # 2 marker per cell in x
 nmy   = 4                # 2 marker per cell in y
 nmark = ncx*ncy*nmx*nmy; # total initial number of marker in grid
-epsi  = 1e-4#(1.0/8.0)^2
-# ACTHUNG: For 1/3 - 2/3 interp one neede velocity on pressure points, including ghosts all around
+epsi  = 1e-4
+# ACTHUNG: For 1/3 - 2/3 interp one needs velocity on pressure points, including ghosts all around
 Vxp = zeros(Float64,(ncx+2,ncy+2))
 Vyp = zeros(Float64,(ncx+2,ncy+2))
 Vxp[2:end-1,2:end-1] .= 0.5*(Vx[1:end-1,2:end-1] .+ Vx[2:end,2:end-1]) # for some reason Taras avoids BCs -  don't need this
@@ -479,8 +188,6 @@ yv          = LinRange(ymin, ymax, ncy+1)
 (xvx2,yvx2) = ([x for x=xv,y=yc], [y for x=xv,y=yc]);
 (xvy2,yvy2) = ([x for x=xc,y=yv], [y for x=xc,y=yv]);
 # 2D tables
-# Vx          = zeros(Float64,(ncx+1,ncy  ))
-# Vy          = zeros(Float64,(ncx  ,ncy+1))
 VxC         = zeros(Float64,(ncx  ,ncy  ))
 VyC         = zeros(Float64,(ncx  ,ncy  ))
 Vxv         = zeros(Float64,(ncx+1,ncy+1))
@@ -496,11 +203,6 @@ mean_mpc    = zeros(Float64,   nt )
 tot_reseed  = zeros(Float64,   nt )
 nmark_add   = 0;
 min_part_cell = 4
-if style == 5   
-    Afact = PrecomputeInterpolant( xce, yce, epsi )
-else
-    Afact = PrecomputeInterpolantStaggered( xv, yce, xce, yv, epsi )
-end
 # set velocity
 @threads for j=1:ncy
     for i=1:ncx
@@ -517,7 +219,6 @@ end
         Vmag[i,j] = sqrt(VxC[i,j]^2 + VyC[i,j]^2)
     end
 end
-
 @. Vxv = 0.5*(Vx[:,2:end]+Vx[:,1:end-1])
 @. Vyv = 0.5*(Vy[2:end,:]+Vy[1:end-1,:])
 # Compute dt for Advection
@@ -529,26 +230,6 @@ xm1d      =  LinRange(xmin+dxm/2, xmax-dxm/2, ncx*nmx)
 ym1d      =  LinRange(ymin+dym/2, ymax-dym/2, ncy*nmy)
 (xmi,ymi) = ([x for x=xm1d,y=ym1d], [y for x=xm1d,y=ym1d])
 # Over allocate markers
-# nmark_max = nmark;
-# phm = zeros(Int64,   (nmark_max))
-# xm  = zeros(Float64, (nmark_max)) 
-# ym  = zeros(Float64, (nmark_max))
-# Vxm = zeros(Float64, (nmark_max))
-# Vym = zeros(Float64, (nmark_max))
-#  for k=1:nmark
-#     xm[k]  = xm2[k]
-#     ym[k]  = ym2[k]
-#     Vxm[k] =-ym2[k]
-#     Vym[k] = xm2[k]
-# end
-# # xm[1:nmark]  = vec(xm2)
-# # ym[1:nmark]  = vec(ym2)
-# # Vxm[1:nmark] =-vec(ym2)
-# # Vym[1:nmark] = vec(xm2)
-# # xm  = xm2[:]
-# # ym  = ym2[:]
-# # Vxm =-ym2[:]
-# # Vym = xm2[:]
 xm   = vec(xmi)
 ym   = vec(ymi)
 Vxm  =-vec(ymi)
@@ -642,23 +323,18 @@ for it=1:nt
             # Roger-Gunther loop
             for rk=1:4
                 # Interp velocity from grid
-                if style==1 # Bilinear velocity interp (original is Markers_divergence_ALLSCHEMES_RK4.m)
+                if style == 1 # Bilinear velocity interp (original is Markers_divergence_ALLSCHEMES_RK4.m)
                     vxm = VxFromVxNodes(Vx, k, p, xv, yce, dx, dy, ncx, ncy, 0)
                     vym = VyFromVxNodes(Vy, k, p, xce, yv, dx, dy, ncx, ncy, 0)
-                elseif style == 3
+                elseif style == 2
                     vxx = VxFromVxNodes(Vx, k, p, xv, yce, dx, dy, ncx, ncy, 0)
                     vyy = VyFromVxNodes(Vy, k, p, xce, yv, dx, dy, ncx, ncy, 0)
                     vxp, vyp = VxVyFromPrNodes(Vxp, Vyp, k, p, xce, yce, dx, dy, ncx, ncy)
                     vxm = itpw*vxp + (1.0-itpw)*vxx
                     vym = itpw*vyp + (1.0-itpw)*vyy
-                elseif style == 4
+                elseif style == 3
                     vxm = VxFromVxNodes(Vx, k, p, xv, yce, dx, dy, ncx, ncy, 1)
                     vym = VyFromVxNodes(Vy, k, p, xce, yv, dx, dy, ncx, ncy, 1)
-                elseif style == 5   
-                    # vxm, vym = VxVyFromPrNodesDivFreeRBF(Vxp, Vyp, k, p, xce, yce, dx, dy, ncx, ncy)
-                    vxm, vym = VxVyFromPrNodesDivFreeRBF(Vxv, Vyv, k, p, xv, yv, dx, dy, ncx-1, ncy-1, Afact, epsi)
-                elseif style == 6
-                    vxm, vym = VxVyFromPrNodesStaggeredDivFreeRBF(Vx, Vy, k, p, xv, yce, xce, yv, dx, dy, ncx, ncy, Afact, epsi)
                 end
                 # Temporary RK advection steps
                 p.x[k] = x0 + rkv[rk]*dt*vxm
