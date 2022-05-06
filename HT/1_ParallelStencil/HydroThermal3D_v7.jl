@@ -22,19 +22,21 @@ using Printf, Statistics, LinearAlgebra, Plots
 # using HDF5
 using WriteVTK
 
-# Visualise
-Advection = 1
-Vizu      = 1
-Save      = 1
-fact      = 1
-nt        = 0
-nout      = 10
-dt_fact   = 10
-
 ############################################## MAIN CODE ##############################################
 
 @views function HydroThermal3D()
-@printf("Starting HydroThermal3D!\n")
+
+    @printf("Starting HydroThermal3D!\n")
+
+    # Visualise
+    Advection = 1
+    Vizu      = 1
+    Save      = 1
+    fact      = 1
+    nt        = 0
+    nout      = 10
+    dt_fact   = 10
+
 # Physics
 Ra       = 60.0 # important to put the digit there - if not, it is defined as an Int64
 dT       = 1.0
@@ -211,82 +213,7 @@ for it = it1:nt
 
     #---------------------------------------------------------------------
     if Advection == 1
-        @printf("Advecting with Weno5!\n")
-        # Advection
-        order = 2.0
-
-        @parallel Init_vel!(Vx, Vy, Vz, kx, ky, kz, Pc_ex, Ty, Ra, _dx, _dy, _dz)
-        # Boundaries
-        BC_type_W = 0
-        BC_val_W  = 0.0
-        BC_type_E = 0
-        BC_val_E  = 0.0
-
-        BC_type_S = 1
-        BC_val_S  = Tbot
-        BC_type_N = 1
-        BC_val_N  = Ttop
-
-        BC_type_B = 0
-        BC_val_B  = 0.0
-        BC_type_F = 0
-        BC_val_F  = 0.0
-
-		# Upwind velocities
-        @parallel ResetA!(Vxm, Vxp)
-        @parallel VxPlusMinus!(Vxm, Vxp, Vx)
-
-        @parallel ResetA!(Vym, Vyp)
-        @parallel VyPlusMinus!(Vym, Vyp, Vy)
-
-        @parallel ResetA!(Vzm, Vzp)
-        @parallel VzPlusMinus!(Vzm, Vzp, Vz)
-
-        ########
-        @parallel Cpy_inn_to_all!(Tc, Tc_ex)
-        ########
-
-        # Advect in x direction
-        @parallel ArrayEqualArray!(Told, Tc)
-        for io=1:order
-            @parallel Boundaries_x_Weno5!(Tc_exxx, Tc, BC_type_W, BC_val_W, BC_type_E, BC_val_E)
-            @parallel Gradients_minus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-            @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-            @parallel Gradients_plus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-            @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-            @parallel Advect!(Tc, Vxp, dTdxm, Vxm, dTdxp, dt)
-        end
-        @parallel TimeAveraging!(Tc, Told, order)
-
-       # Advect in y direction
-       @parallel ArrayEqualArray!(Told, Tc)
-       for io=1:order
-           @parallel Boundaries_y_Weno5!(Tc_exxx, Tc, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
-           @parallel Gradients_minus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-           @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-           @parallel Gradients_plus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-           @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-           @parallel Advect!(Tc, Vyp, dTdxm, Vym, dTdxp, dt)
-       end
-       @parallel TimeAveraging!(Tc, Told, order)
-
-       # Advect in z direction
-       @parallel ArrayEqualArray!(Told, Tc)
-       for io=1:order
-           @parallel Boundaries_z_Weno5!(Tc_exxx, Tc, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
-           @parallel Gradients_minus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-           @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-           @parallel Gradients_plus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-           @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-           @parallel Advect!(Tc, Vzp, dTdxm, Vzm, dTdxp, dt)
-       end
-       @parallel TimeAveraging!(Tc, Told, order)
-
-	   ####
-	   @parallel Cpy_all_to_inn!(Tc_ex, Tc)
-	   ###
-       @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
-
+        AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
     end
 
 	# Set dt for next step
@@ -333,11 +260,7 @@ end#it
 # end
 if (USE_MPI) finalize_global_grid(); end
 
-# =#
-
 end # Diffusion3D()
-
-@time HydroThermal3D()
 
 ############################################## Kernels for HT code ##############################################
 
@@ -439,3 +362,85 @@ end
     # SET INITIAL THERMAL PERTUBATION
     # @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2 + (zce2-zmax/2)^2) < 0.01 ] += 0.1
 end
+
+@views function AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
+
+    @printf("Advecting with Weno5!\n")
+    # Advection
+    order = 2.0
+
+    @parallel Init_vel!(Vx, Vy, Vz, kx, ky, kz, Pc_ex, Ty, Ra, _dx, _dy, _dz)
+    # Boundaries
+    BC_type_W = 0
+    BC_val_W  = 0.0
+    BC_type_E = 0
+    BC_val_E  = 0.0
+
+    BC_type_S = 1
+    BC_val_S  = Tbot
+    BC_type_N = 1
+    BC_val_N  = Ttop
+
+    BC_type_B = 0
+    BC_val_B  = 0.0
+    BC_type_F = 0
+    BC_val_F  = 0.0
+
+    # Upwind velocities
+    @parallel ResetA!(Vxm, Vxp)
+    @parallel VxPlusMinus!(Vxm, Vxp, Vx)
+
+    @parallel ResetA!(Vym, Vyp)
+    @parallel VyPlusMinus!(Vym, Vyp, Vy)
+
+    @parallel ResetA!(Vzm, Vzp)
+    @parallel VzPlusMinus!(Vzm, Vzp, Vz)
+
+    ########
+    @parallel Cpy_inn_to_all!(Tc, Tc_ex)
+    ########
+
+    # Advect in x direction
+    @parallel ArrayEqualArray!(Told, Tc)
+    for io=1:order
+        @parallel Boundaries_x_Weno5!(Tc_exxx, Tc, BC_type_W, BC_val_W, BC_type_E, BC_val_E)
+        @parallel Gradients_minus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+        @parallel Gradients_plus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+        @parallel Advect!(Tc, Vxp, dTdxm, Vxm, dTdxp, dt)
+    end
+    @parallel TimeAveraging!(Tc, Told, order)
+
+    # Advect in y direction
+    @parallel ArrayEqualArray!(Told, Tc)
+    for io=1:order
+        @parallel Boundaries_y_Weno5!(Tc_exxx, Tc, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
+        @parallel Gradients_minus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+        @parallel Gradients_plus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+        @parallel Advect!(Tc, Vyp, dTdxm, Vym, dTdxp, dt)
+    end
+    @parallel TimeAveraging!(Tc, Told, order)
+
+    # Advect in z direction
+    @parallel ArrayEqualArray!(Told, Tc)
+    for io=1:order
+        @parallel Boundaries_z_Weno5!(Tc_exxx, Tc, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
+        @parallel Gradients_minus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+        @parallel Gradients_plus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+        @parallel Advect!(Tc, Vzp, dTdxm, Vzm, dTdxp, dt)
+    end
+    @parallel TimeAveraging!(Tc, Told, order)
+
+    ####
+    @parallel Cpy_all_to_inn!(Tc_ex, Tc)
+    ###
+    @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
+end
+
+##################
+@time HydroThermal3D()
