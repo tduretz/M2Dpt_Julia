@@ -17,6 +17,7 @@ end
 
 include("./tools/Macros.jl")  # Include macros - Cachemisère
 include("./tools/Weno5_Routines.jl")
+include("./kernels_HT3D.jl")
 
 using Printf, Statistics, LinearAlgebra, Plots
 # using HDF5
@@ -31,7 +32,7 @@ using WriteVTK
     # Visualise
     Advection = 1
     Vizu      = 1
-    Save      = 1
+    Save      = 0
     fact      = 1
     nt        = 0
     nout      = 10
@@ -47,11 +48,17 @@ using WriteVTK
     # kts = 2.6842 - 0.0016*(T)
     # kp  = 3.1138 - 0.0023*(T)  ?
     # μf = 2.414*1e-5*10^(2.302*(247.8/(T - 140)))
+    # ϵp = 0.1
+    # θs = 1.0 - ϵp
+
 
 # Physics
-Ra       = 60.0 # important to put the digit there - if not, it is defined as an Int64
-dT       = 1.0
-Ttop     = 0.0
+xmin     = -0.0;  xmax = 120.0e3; Lx = xmax - xmin
+ymin     = -30e3; ymax = 0.0;     Ly = ymax - ymin
+zmin     = -0.00; zmax = 1.0e3;   Lz = zmax - zmin
+dT       = (ymax-ymin)*30e-3
+println(dT)
+Ttop     = 293.0
 Tbot     = Ttop + dT
 dP       = 0.25
 Ptop     = 0.0
@@ -60,11 +67,10 @@ T_i      = 10.0
 rho_cp   = 1.0
 lam0     = 1.0
 rad      = 1.0
-xmin     = -0.0;  xmax = 120e3; Lx = xmax - xmin
-ymin     = -30e3; ymax = 0;     Ly = ymax - ymin
-zmin     = -0.00; zmax = 1e3;   Lz = zmax - zmin
+println(Ttop)
+println(Tbot)
 # Numerics
-fact     = 2 
+fact     = 8 
 ncx      = fact*32-6
 ncy      = fact*8 -6
 ncz      = 3#fact*32-6
@@ -169,76 +175,76 @@ end
 
 @printf("Initial conditions were set up!\n")
 
- #Define kernel launch params (used only if USE_GPU set true).
-cuthreads = (32, 8, 1 )
-cublocks  = ( 1, 4, 32).*fact
+# #Define kernel launch params (used only if USE_GPU set true).
+# cuthreads = (32, 8, 1 )
+# cublocks  = ( 1, 4, 32).*fact
 
-evol=[]; it1=0; time=0             #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
-## Action
-for it = it1:nt
+# evol=[]; it1=0; time=0             #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
+# ## Action
+# for it = it1:nt
 
-    @printf("Thermal solver\n");
-	@parallel ResetA!(Ft,Rt)
-	@parallel InitThermal!(Rt, kx, ky, kz, Tc_ex, ktv, _dt)
+#     @printf("Thermal solver\n");
+# 	@parallel ResetA!(Ft,Rt)
+# 	@parallel InitThermal!(Rt, kx, ky, kz, Tc_ex, ktv, _dt)
 
-    for iter = 0:nitmax
-        @parallel SetPressureBCs!(Tc_ex, Tbot, Ttop)
-        @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
-        @parallel UpdateT!(Ft, Tc_ex, Rt, qx, qy, qz, _dt, dtauT, _dx, _dy, _dz)
-        if (USE_MPI) update_halo!(Tc_ex); end
-        if mod(iter,nitout) == 1
-            # nFt = norm(Ft)/sqrt(ncx*ncy*ncz) # Question 3 - how to norm with GPU and MPI
-            nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz)
-            if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
-            if nFt<tolT break end
-        end
-    end
+#     for iter = 0:nitmax
+#         @parallel SetPressureBCs!(Tc_ex, Tbot, Ttop)
+#         @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
+#         @parallel UpdateT!(Ft, Tc_ex, Rt, qx, qy, qz, _dt, dtauT, _dx, _dy, _dz)
+#         if (USE_MPI) update_halo!(Tc_ex); end
+#         if mod(iter,nitout) == 1
+#             # nFt = norm(Ft)/sqrt(ncx*ncy*ncz) # Question 3 - how to norm with GPU and MPI
+#             nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz)
+#             if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
+#             if nFt<tolT break end
+#         end
+#     end
 
-    @printf("min(Rt)    = %02.4e - max(Rt)    = %02.4e\n", minimum_g(Rt),    maximum_g(Rt)    )
-    @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum_g(Tc_ex), maximum_g(Tc_ex) )
+#     @printf("min(Rt)    = %02.4e - max(Rt)    = %02.4e\n", minimum_g(Rt),    maximum_g(Rt)    )
+#     @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum_g(Tc_ex), maximum_g(Tc_ex) )
 
-    @printf("Darcy solver\n");
-	@parallel ResetA!(Ft, Ft0)
-	@parallel InitDarcy!(Ty, kx, ky, kz, Tc_ex, kfv, _dt)
-    @parallel Compute_Rp!(Rp, ky, Ty, Ra, _dy)
+#     @printf("Darcy solver\n");
+# 	@parallel ResetA!(Ft, Ft0)
+# 	@parallel InitDarcy!(Ty, kx, ky, kz, Tc_ex, kfv, _dt)
+#     @parallel Compute_Rp!(Rp, ky, Ty, Ra, _dy)
 
-    for iter = 0:nitmax
-        @parallel SetPressureBCs!(Pc_ex, Pbot, Ptop)
-        @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Pc_ex, _dx, _dy, _dz)
-        @parallel ResidualDiffusion!(Ft, Rp, qx, qy, qz, _dx, _dy, _dz)
-        @parallel UpdateP!(Ft0, Pc_ex, Ft, dampx, dtauP)
+#     for iter = 0:nitmax
+#         @parallel SetPressureBCs!(Pc_ex, Pbot, Ptop)
+#         @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Pc_ex, _dx, _dy, _dz)
+#         @parallel ResidualDiffusion!(Ft, Rp, qx, qy, qz, _dx, _dy, _dz)
+#         @parallel UpdateP!(Ft0, Pc_ex, Ft, dampx, dtauP)
 
-        if (USE_MPI) update_halo!(Pc_ex); end
-        if mod(iter,nitout) == 1
-            nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz)
-            if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
-            if nFt<tolP break end
-        end
-    end
+#         if (USE_MPI) update_halo!(Pc_ex); end
+#         if mod(iter,nitout) == 1
+#             nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz)
+#             if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
+#             if nFt<tolP break end
+#         end
+#     end
 
-    @printf("min(Rp)    = %02.4e - max(Rp)    = %02.4e\n", minimum_g(Rp),    maximum_g(Rp)    )
-    @printf("min(Pc_ex) = %02.4e - max(Pc_ex) = %02.4e\n", minimum_g(Pc_ex), maximum_g(Pc_ex) )
+#     @printf("min(Rp)    = %02.4e - max(Rp)    = %02.4e\n", minimum_g(Rp),    maximum_g(Rp)    )
+#     @printf("min(Pc_ex) = %02.4e - max(Pc_ex) = %02.4e\n", minimum_g(Pc_ex), maximum_g(Pc_ex) )
 
-    time  = time + dt;
-    @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
+#     time  = time + dt;
+#     @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
 
-    #---------------------------------------------------------------------
-    if Advection == 1
-        AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
-    end
+#     #---------------------------------------------------------------------
+#     if Advection == 1
+#         AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
+#     end
 
-	# Set dt for next step
-	dt  = dt_fact*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
-	_dt = 1/dt
-	@printf("Time step = %2.2e s\n", dt)
+# 	# Set dt for next step
+# 	dt  = dt_fact*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
+# 	_dt = 1/dt
+# 	@printf("Time step = %2.2e s\n", dt)
 
     #---------------------------------------------------------------------
 
     if (Vizu == 1)
         X = Tc_ex[2:end-1,2:end-1,2:end-1]
         # display( heatmap(xc, yc, transpose(X[:,:,Int(ceil(ncz/2))]),c=:viridis,aspect_ratio=1) );
-        display( heatmap(zc, yc, X[ncx÷2,:,:], c=:jet1, aspect_ratio=1) );
-
+        # display( heatmap(xce/1e3, yce/1e3, Tc_ex[:,:,2]', c=:jet1, aspect_ratio=1) );
+        display( heatmap(xv/1e3, yv/1e3, kfv[:,:,1]', c=:jet1, aspect_ratio=1) );
         # display(  contourf(xc,yc,transpose(Ty[:,:,Int(ceil(ncz/2))])) ) # accede au sublot 111
         #quiver(x,y,(f,f))
         @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d\n", Int(ceil(ncz/2)), ncx, ncy, ncz)
@@ -269,189 +275,8 @@ end#it
 #     # println("nprocs $nprocs dims $(dims[1]) $(dims[2]) $(dims[3]) fdims 1 1 1 nxyz $ncx $ncy $ncz nt $(iterMin-warmup) nb_it 1 PRECIS $(sizeof(Data.Number)) time_s $time_s block $(cuthreads[1]) $(cuthreads[2]) $(cuthreads[3]) grid $(cublocks[1]) $(cublocks[2]) $(cublocks[3])\n");
 #     gif(anim, "Diffusion_fps15_1.gif", fps=15);
 # end
-if (USE_MPI) finalize_global_grid(); end
+# if (USE_MPI) finalize_global_grid(); end
 
-end # Diffusion3D()
+# end 
 
-############################################## Kernels for HT code ##############################################
-
-@parallel function Init_vel!(Vx::Data.Array, Vy::Data.Array, Vz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Pc_ex::Data.Array, Ty::Data.Array, Ra::Data.Number, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
-    @all(Vx) = -@all(kx) * _dx*@d_xi(Pc_ex)
-    @all(Vy) = -@all(ky) *(_dy*@d_yi(Pc_ex) - Ra*@all(Ty))
-    @all(Vz) = -@all(kz) * _dz*@d_zi(Pc_ex)
-
-    return
-end
-
-@parallel function InitDarcy!(Ty::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, kfv::Data.Array, _dt::Data.Number)
-
-	@all(Ty) = @av_yi(Tc_ex)
-	@all(kx) = @av_yza(kfv)
-	@all(ky) = @av_xza(kfv)
-	@all(kz) = @av_xya(kfv)
-
-	return
-end
-
-@parallel function Compute_Rp!(Rp::Data.Array, ky::Data.Array, Ty::Data.Array, Ra::Data.Number, _dy::Data.Number)
-
-    @all(Rp) = Ra*_dy*@dmul_ya(ky, Ty)
-
-    return
-end
-
-@parallel function InitThermal!(Rt::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, ktv::Data.Array, _dt::Data.Number)
-
-    @all(Rt) = -_dt * @inn(Tc_ex)
-    @all(kx) = @av_yza(ktv)
-    @all(ky) = @av_xza(ktv)
-    @all(kz) = @av_xya(ktv)
-
-    return
-end
-
-@parallel function ComputeFlux!(qx::Data.Array, qy::Data.Array, qz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, A::Data.Array,
-                                _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
-    @all(qx) = -@all(kx)*(_dx*@d_xi(A))
-    @all(qy) = -@all(ky)*(_dy*@d_yi(A))
-    @all(qz) = -@all(kz)*(_dz*@d_zi(A))
-
-    return
-end
-
-@parallel function UpdateT!(F::Data.Array, T::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array, _dt::Data.Number, dtau::Data.Number,
-                            _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
-    @all(F) = @all(R) + _dt*@inn(T) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
-    @inn(T) = @inn(T) - dtau * @all(F)
-
-    return
-end
-
-@parallel function ResidualDiffusion!(F::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array,
-                                      _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
-	@all(F) = @all(R) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
-
-    return
-end
-
-@parallel function UpdateP!(F0::Data.Array, P::Data.Array, F::Data.Array, dampx::Data.Number, dtau::Data.Number)
-
-    @all(F0) = @all(F) + dampx*@all(F0)
-    @inn(P ) = @inn(P) - dtau *@all(F0)
-
-    return
-end
-
-@parallel_indices (ix,iy,iz) function SetPressureBCs!(Pc_ex::Data.Array, Pbot::Data.Number, Ptop::Data.Number)
-
-    if (ix==1             && iy<=size(Pc_ex,2) && iz<=size(Pc_ex,3)) Pc_ex[1            ,iy,iz] =          Pc_ex[2              ,iy,iz]  end
-    if (ix==size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz<=size(Pc_ex,3)) Pc_ex[size(Pc_ex,1),iy,iz] =          Pc_ex[size(Pc_ex,1)-1,iy,iz]  end
-    if (ix<=size(Pc_ex,1) && iy==1             && iz<=size(Pc_ex,3)) Pc_ex[ix            ,1,iz] = 2*Pbot - Pc_ex[ix              ,2,iz]  end
-    if (ix<=size(Pc_ex,1) && iy==size(Pc_ex,2) && iz<=size(Pc_ex,3)) Pc_ex[ix,size(Pc_ex,2),iz] = 2*Ptop - Pc_ex[ix,size(Pc_ex,2)-1,iz]  end
-    if (ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz==1            ) Pc_ex[ix,iy,            1] =          Pc_ex[ix,iy,              2]  end
-    if (ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz==size(Pc_ex,3)) Pc_ex[ix,iy,size(Pc_ex,3)] =          Pc_ex[ix,iy,size(Pc_ex,3)-1]  end
-
-    return
-end
-
-@views function SetInitialConditions(kfv::Array{Float64,3}, Tc_ex::Array{Float64,3}, xce2::Array{Float64,3}, yce2::Array{Float64,3}, zce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, yc2::Array{Float64,3}, Tbot::Data.Number, Ttop::Data.Number, dT::Data.Number, xmax::Data.Number, ymax::Data.Number, zmax::Data.Number, Ly::Data.Number)
-# @parallel function SetInitialConditions(kfv, Tc_ex, Tbot, Ttop, dT, xce2, yce2, xv2, yv2, Ly, yc2, xmax, ymax)
-    # Initial conditions: Draw Fault
-    kfv[ yv2.>=2/3*Ly ] .= kfv[ yv2.>=2/3*Ly ] .+ 20
-    a = -30*pi/180; b = 0.75
-    @. kfv[ (yv2 - xv2*a - b > 0) & (yv2 - xv2*a - (b+0.05) < 0) & (yv2>0.05) & (zv2<1.0)] = 20
-    # Thermal field
-    @. Tc_ex[2:end-1,2:end-1,2:end-1] = -dT/Ly * yc2 + dT
-    # Tc_ex[2:end-1,2:end-1,2:end-1]    = Tc_ex[2:end-1,2:end-1,2:end-1] + rand(ncx,ncy,ncz)/10
-    @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:]
-    @. Tc_ex[:,1,:] = 2*Tbot - Tc_ex[:,2,:]; @. Tc_ex[:,end,:] = 2*Ttop - Tc_ex[:,end-1,:]
-    @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1]
-    # SET INITIAL THERMAL PERTUBATION
-    # @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2 + (zce2-zmax/2)^2) < 0.01 ] += 0.1
-end
-
-@views function AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
-
-    @printf("Advecting with Weno5!\n")
-    # Advection
-    order = 2.0
-
-    @parallel Init_vel!(Vx, Vy, Vz, kx, ky, kz, Pc_ex, Ty, Ra, _dx, _dy, _dz)
-    # Boundaries
-    BC_type_W = 0
-    BC_val_W  = 0.0
-    BC_type_E = 0
-    BC_val_E  = 0.0
-
-    BC_type_S = 1
-    BC_val_S  = Tbot
-    BC_type_N = 1
-    BC_val_N  = Ttop
-
-    BC_type_B = 0
-    BC_val_B  = 0.0
-    BC_type_F = 0
-    BC_val_F  = 0.0
-
-    # Upwind velocities
-    @parallel ResetA!(Vxm, Vxp)
-    @parallel VxPlusMinus!(Vxm, Vxp, Vx)
-
-    @parallel ResetA!(Vym, Vyp)
-    @parallel VyPlusMinus!(Vym, Vyp, Vy)
-
-    @parallel ResetA!(Vzm, Vzp)
-    @parallel VzPlusMinus!(Vzm, Vzp, Vz)
-
-    ########
-    @parallel Cpy_inn_to_all!(Tc, Tc_ex)
-    ########
-
-    # Advect in x direction
-    @parallel ArrayEqualArray!(Told, Tc)
-    for io=1:order
-        @parallel Boundaries_x_Weno5!(Tc_exxx, Tc, BC_type_W, BC_val_W, BC_type_E, BC_val_E)
-        @parallel Gradients_minus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-        @parallel Gradients_plus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-        @parallel Advect!(Tc, Vxp, dTdxm, Vxm, dTdxp, dt)
-    end
-    @parallel TimeAveraging!(Tc, Told, order)
-
-    # Advect in y direction
-    @parallel ArrayEqualArray!(Told, Tc)
-    for io=1:order
-        @parallel Boundaries_y_Weno5!(Tc_exxx, Tc, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
-        @parallel Gradients_minus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-        @parallel Gradients_plus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-        @parallel Advect!(Tc, Vyp, dTdxm, Vym, dTdxp, dt)
-    end
-    @parallel TimeAveraging!(Tc, Told, order)
-
-    # Advect in z direction
-    @parallel ArrayEqualArray!(Told, Tc)
-    for io=1:order
-        @parallel Boundaries_z_Weno5!(Tc_exxx, Tc, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
-        @parallel Gradients_minus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-        @parallel Gradients_plus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-        @parallel Advect!(Tc, Vzp, dTdxm, Vzm, dTdxp, dt)
-    end
-    @parallel TimeAveraging!(Tc, Told, order)
-
-    ####
-    @parallel Cpy_all_to_inn!(Tc_ex, Tc)
-    ###
-    @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
-end
-
-##################
 @time HydroThermal3D()
