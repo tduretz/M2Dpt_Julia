@@ -1,24 +1,78 @@
+############################################## Scaling ##############################################
+
+Base.@kwdef mutable struct scaling
+    T ::Union{Data.Number, Missing} = missing
+    V ::Union{Data.Number, Missing} = missing
+    L ::Union{Data.Number, Missing} = missing
+    η ::Union{Data.Number, Missing} = missing
+    t ::Union{Data.Number, Missing} = missing
+    a ::Union{Data.Number, Missing} = missing
+    ε ::Union{Data.Number, Missing} = missing
+    σ ::Union{Data.Number, Missing} = missing
+    m ::Union{Data.Number, Missing} = missing
+    ρ ::Union{Data.Number, Missing} = missing
+    F ::Union{Data.Number, Missing} = missing
+    J ::Union{Data.Number, Missing} = missing
+    W ::Union{Data.Number, Missing} = missing
+    C ::Union{Data.Number, Missing} = missing
+    kt::Union{Data.Number, Missing} = missing
+    kf::Union{Data.Number, Missing} = missing
+end
+
+function scale_me!( scale )
+    scale.t    = scale.L / scale.V;
+    scale.a    = scale.V / scale.t;
+    scale.ε    = 1.0 / scale.t;
+    scale.σ    = scale.η / scale.t
+    scale.m    = scale.σ * scale.L * scale.t^2
+    scale.ρ    = scale.m / scale.L^3
+    scale.F    = scale.m * scale.L / scale.t^2
+    scale.J    = scale.m * scale.L^2 / scale.t^2
+    scale.W    = scale.J / scale.t
+    scale.C    = scale.J / scale.m / scale.T
+    scale.kt   = scale.W / scale.L / scale.T
+    scale.kf   = scale.L^2
+    return nothing
+end
+
 ############################################## Kernels for HT code ##############################################
 
-@views function SetInitialConditions(kfv::Array{Float64,3}, Tc_ex::Array{Float64,3}, xce2::Array{Float64,3}, yce2::Array{Float64,3}, zce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, yc2::Array{Float64,3}, Tbot::Data.Number, Ttop::Data.Number, dT::Data.Number, xmax::Data.Number, ymax::Data.Number, zmax::Data.Number, Ly::Data.Number)
+@views function UpdateNonLinearity(ρs::Array{Float64,3}, ρf::Array{Float64,3}, kfv::Array{Float64,3}, Cps::Array{Float64,3}, Cpf::Array{Float64,3}, kts::Array{Float64,3}, ktf::Array{Float64,3}, Tc_ex::Array{Float64,3}, Perm::Data.Number, sc::scaling)
+    Tsca = T*sc.T 
+    @. ρf  = ( 1000*(1 - (0.000210*(Tsca - 293))) )/sc.ρ
+    @. ρs  = ( 2800*(1 - (0.000024*(Tsca - 293))) )/sc.ρ
+    @. Cps = ( 0.5915*(T) + 636.14 )/sc.C
+    @. Cpf = ( 1000 + 7.5*(T) )/sc.C
+    @. ktf = ( 0.0012*(T) - 0.069 )/sc.kf
+    @. kts = ( 2.6842 - 0.0016*(T) )/sc.kf
+    # @. kp  = ( 3.1138 - 0.0023*(T) )/sc.kt
+    @. μf  = ( 2.414*1e-5*10^(2.302*(247.8/(T - 140))) )/sc.η
+end
+
+@views function SetInitialConditions(kfv::Array{Float64,3}, Tc_ex::Array{Float64,3}, xce2::Array{Float64,3}, yce2::Array{Float64,3}, zce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, yc2::Array{Float64,3}, Tbot::Data.Number, Ttop::Data.Number, dT::Data.Number, xmax::Data.Number, ymax::Data.Number, zmax::Data.Number, Ly::Data.Number, Perm::Data.Number, sc::scaling)
     # @parallel function SetInitialConditions(kfv, Tc_ex, Tbot, Ttop, dT, xce2, yce2, xv2, yv2, Ly, yc2, xmax, ymax)
         # Initial conditions: Draw Fault
+        in_fault = zero(kfv)
         # top
-        x1 = 68466.18089117216; x2 = 31498.437753425103
-        y1 = 0.0;               y2 = -16897.187956165293
+        x1 = 68466.18089117216/sc.L; x2 = 31498.437753425103/sc.L
+        y1 = 0.0/sc.L;               y2 = -16897.187956165293/sc.L
         a1 = ( y1-y2 ) / ( x1-x2 )
         b1 = y1 - x1*a1
         # bottom
-        x1 = 32000.0; x2 = 69397.54576150524
-        y1 =-17800.0; y2 = 0.
+        x1 = 32000.0/sc.L; x2 = 69397.54576150524/sc.L
+        y1 =-17800.0/sc.L; y2 = 0.0/sc.L
         a2 = ( y1-y2 ) / ( x1-x2 )
         b2 = y1 - x1*a2
         # bottom
-        x1 = 32000.0; x2 = 31498.437753425103
-        y1 =-17800.0; y2 = -16897.187956165293
+        x1 = 32000.0/sc.L; x2 = 31498.437753425103/sc.L
+        y1 =-17800.0/sc.L; y2 = -16897.187956165293/sc.L
         a3 = ( y1-y2 ) / ( x1-x2 )
         b3 = y1 - x1*a3
-        @. kfv[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ] = 20
+        kf0 = 5e-15/sc.kf
+        y1  = 500.0/sc.L; y2 = 3000.0/sc.L
+        @. kfv = kf0*exp((yv2 - y1)/y2)
+        @. in_fault = yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)
+        @. kfv[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ] = Perm*kfv[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ]
         # Thermal field
         @. Tc_ex = Ttop - dT/Ly * yce2
         @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:]
@@ -45,14 +99,14 @@ end
 	@all(ky) = @av_xza(kfv)
 	@all(kz) = @av_xya(kfv)
 
-	return
+	return nothing
 end
 
 @parallel function Compute_Rp!(Rp::Data.Array, ky::Data.Array, Ty::Data.Array, Ra::Data.Number, _dy::Data.Number)
 
     @all(Rp) = Ra*_dy*@dmul_ya(ky, Ty)
 
-    return
+    return nothing
 end
 
 @parallel function InitThermal!(Rt::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, ktv::Data.Array, _dt::Data.Number)
@@ -62,7 +116,7 @@ end
     @all(ky) = @av_xza(ktv)
     @all(kz) = @av_xya(ktv)
 
-    return
+    return nothing
 end
 
 @parallel function ComputeFlux!(qx::Data.Array, qy::Data.Array, qz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, A::Data.Array,
@@ -72,7 +126,7 @@ end
     @all(qy) = -@all(ky)*(_dy*@d_yi(A))
     @all(qz) = -@all(kz)*(_dz*@d_zi(A))
 
-    return
+    return nothing
 end
 
 @parallel function UpdateT!(F::Data.Array, T::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array, _dt::Data.Number, dtau::Data.Number,
@@ -81,7 +135,7 @@ end
     @all(F) = @all(R) + _dt*@inn(T) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
     @inn(T) = @inn(T) - dtau * @all(F)
 
-    return
+    return nothing
 end
 
 @parallel function ResidualDiffusion!(F::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array,
@@ -89,7 +143,7 @@ end
 
 	@all(F) = @all(R) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
 
-    return
+    return nothing
 end
 
 @parallel function UpdateP!(F0::Data.Array, P::Data.Array, F::Data.Array, dampx::Data.Number, dtau::Data.Number)
@@ -97,7 +151,7 @@ end
     @all(F0) = @all(F) + dampx*@all(F0)
     @inn(P ) = @inn(P) - dtau *@all(F0)
 
-    return
+    return nothing
 end
 
 @parallel_indices (ix,iy,iz) function SetPressureBCs!(Pc_ex::Data.Array, Pbot::Data.Number, Ptop::Data.Number)
@@ -109,7 +163,7 @@ end
     if (ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz==1            ) Pc_ex[ix,iy,            1] =          Pc_ex[ix,iy,              2]  end
     if (ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz==size(Pc_ex,3)) Pc_ex[ix,iy,size(Pc_ex,3)] =          Pc_ex[ix,iy,size(Pc_ex,3)-1]  end
 
-    return
+    return nothing
 end
 
 @views function AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
